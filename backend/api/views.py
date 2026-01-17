@@ -12,6 +12,8 @@ from api.serializers import (
     FetchAccountsSerializer, 
     FetchPostsSerializer, 
     FetchGrokathonSizeSerializer,
+    FetchTopicsSerializer,
+    InferTopicInQuerySerializer,
     FetchIdsHandleTopicsSerializer,
     FetchTopicsAndRanksIdsSerializer,
     FetchTopicsRanksHandleSerializer,
@@ -162,6 +164,38 @@ class GrokathonViewSet(viewsets.GenericViewSet):
     def fetch_posts(self, request):
         ids = request.GET.getlist("ids")
         serializer = FetchPostsSerializer(data={"ids": ids})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+    @action(
+        detail=False,
+        methods=["get"],
+        serializer_class=FetchTopicsSerializer,
+        filter_backends=[QueryFilter],
+        query_filters=[],
+        url_path="fetch-topics",
+        url_name="fetch-topics",
+    )
+    def fetch_topics(self, request):
+        serializer = FetchTopicsSerializer(data={})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        serializer_class=InferTopicInQuerySerializer,
+        filter_backends=[QueryFilter],
+        query_filters=["input_query"],
+        url_path="infer-topic-in-query",
+        url_name="infer-topic-in-query",
+    )
+    def infer_topic_in_query(self, request):
+        input_query = request.GET.get("input_query")
+        serializer = InferTopicInQuerySerializer(data={"input_query": input_query})
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
