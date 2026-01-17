@@ -1,18 +1,58 @@
-# from xai_sdk import Client
-# from django.conf import settings
+import requests
+from django.conf import settings
+import time
 
-# client = Client(api_key=settings.XAI_TOKEN)
+# image_url = "https://media.formula1.com/image/upload/c_lfill,w_3392/q_auto/v1740000000/fom-website/2025/Miscellaneous/2025-start-barcelona.webp"
 
-# empire_state_building = (
-#     "https://images.unsplash.com/photo-1761301006532-fa8143787a88?"
-#     "ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3"
-#     "D%3D&auto=format&fit=crop&q=80&w=987"
-# )
+def generate_video_from_image(image_url: str):
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {settings.XAI_TOKEN}"
+    }
 
-# response = client.video.generate(
-#     prompt="Make lightning strike the top of the empire state building",
-#     model="grok-imagine-video-beta",
-#     image_url=empire_state_building,
-# )
+    data = {
+        "prompt": "Make the formula1 cars drive very fast on the track",
+        "model": "grok-imagine-video-beta",
+        "image": {
+            "url": image_url
+        }
+    }
 
-# print(response.url)
+    response = requests.post(
+        "https://api.x.ai/v1/videos/generations",
+        headers=headers,
+        json=data
+    )
+    response.raise_for_status()
+    result = response.json()
+    request_id = result.get("request_id")
+    return request_id
+
+
+def fetch_video_from_request_id(request_id: str, max_sleep_time: int = 30):
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {settings.XAI_TOKEN}"
+    }
+
+    response = requests.get(
+        f"https://api.x.ai/v1/videos/{request_id}",
+        headers=headers
+    )
+    start_time = time.time()
+    while response.status_code != 200:
+        time.sleep(2)
+        response = requests.get(
+            f"https://api.x.ai/v1/videos/{request_id}",
+            headers=headers
+        )
+        if time.time() - start_time > max_sleep_time:
+            raise Exception(f"Max sleep time reached for request {request_id}")
+    
+    result = response.json()
+    return result.get("url", result)
+
+
+def fetch_video_from_image(image_url: str):
+    request_id = generate_video_from_image(image_url)
+    return fetch_video_from_request_id(request_id)

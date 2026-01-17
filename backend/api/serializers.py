@@ -23,6 +23,19 @@ from api.voicethomas import (
     get_available_voices,
     AVAILABLE_VOICES,
 )
+from api.image import (
+    fetch_video_from_image,
+)
+
+class XaiImageToVideoSerializer(serializers.Serializer):
+    image_url = serializers.URLField(write_only=True)
+    video_url = serializers.URLField(read_only=True)
+
+    def save(self, **kwargs):
+        image_url = self.validated_data.get('image_url')
+        video_url = fetch_video_from_image(image_url)
+        self.instance = {"video_url": video_url}
+        return self.instance
 
 
 class PublicMetricsSerializer(serializers.Serializer):

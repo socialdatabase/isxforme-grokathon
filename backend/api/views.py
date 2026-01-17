@@ -8,6 +8,7 @@ from django.http import StreamingHttpResponse, HttpResponse
 import asyncio
 
 from api.serializers import (
+    XaiImageToVideoSerializer,
     FetchIdsSerializer, 
     FetchAccountsSerializer, 
     FetchPostsSerializer, 
@@ -136,6 +137,22 @@ class GrokathonViewSet(viewsets.GenericViewSet):
     def fetch_ids(self, request):
         input_query = request.GET.get("input_query")
         serializer = FetchIdsSerializer(data={"input_query": input_query})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    @action(
+        detail=False,
+        methods=["post"],
+        serializer_class=XaiImageToVideoSerializer,
+        filter_backends=[QueryFilter],
+        query_filters=["image_url"],
+        url_path="xai-image-to-video",
+        url_name="xai-image-to-video",
+    )
+    def xai_image_to_video(self, request):
+        image_url = request.data.get("image_url")
+        serializer = XaiImageToVideoSerializer(data={"image_url": image_url})
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
