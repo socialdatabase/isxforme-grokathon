@@ -22,7 +22,7 @@ from api.serializers import (
     SpeechToTextSerializer,
 )
 from api.core import QueryFilter
-from api.groksignal import get_expert_category_perspective, get_expert_overview
+from api.groksignal import get_expert_category_perspective, get_expert_overview, generate_ai_bio_handle
 from api.newspaper import generate_newspaper_articles
 
 
@@ -283,6 +283,51 @@ class GrokathonViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        filter_backends=[QueryFilter],
+        query_filters=["handle"],
+        url_path="generate-ai-bio-handle",
+        url_name="generate-ai-bio-handle",
+    )
+    def generate_ai_bio_handle(self, request):
+        handle = request.GET.get("handle")
+
+        def stream_generator():
+            """Convert async generator to sync generator for StreamingHttpResponse"""
+            async def run_stream():
+                async for chunk in generate_ai_bio_handle(handle):
+                    yield chunk
+            
+            # Create a new event loop for this thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            try:
+                # Run the async generator
+                async_gen = run_stream()
+                while True:
+                    try:
+                        chunk = loop.run_until_complete(async_gen.__anext__())
+                        # StreamingHttpResponse expects bytes
+                        if isinstance(chunk, str):
+                            yield chunk.encode('utf-8')
+                        else:
+                            yield chunk
+                    except StopAsyncIteration:
+                        break
+            finally:
+                loop.close()
+        
+        response = StreamingHttpResponse(
+            stream_generator(),
+            content_type='text/plain; charset=utf-8'
+        )
+        response['Cache-Control'] = 'no-cache'
+        response['X-Accel-Buffering'] = 'no'  # Disable buffering in nginx
+        return response
 
     @action(
         detail=False,

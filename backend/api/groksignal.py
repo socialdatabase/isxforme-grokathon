@@ -3,8 +3,126 @@ from openai import OpenAI
 import json
 import io
 import os
+import requests
 
 from api.timeline import fetch_accounts, fetch_posts, chunks
+
+
+def fetch_account_by_username(username: str):
+    """
+    Fetch account information from X API (formerly Twitter API) by username(s).
+    Returns the same data structure as fetch_accounts.
+    
+    Args:
+        usernames: List of usernames (without @) to fetch
+    
+    Returns:
+        list: List of account dictionaries with user information
+    """
+    headers = {"Authorization": f"Bearer {settings.X_BEARER_TOKEN}", "Content-Type": "application/json"}
+
+    url = "https://api.twitter.com/2/users/by"
+    # Remove @ symbols if present in usernames
+    params = {
+        "usernames": username.lstrip('@'),
+        "user.fields": "id,name,username,description,profile_image_url,public_metrics,verified,verified_type,created_at,location,url,entities,pinned_tweet_id,protected,withheld", #x api doesn't work when verified_type is not seelcted
+    }
+
+    resp = requests.get(url, params=params, headers=headers)
+    resp.raise_for_status()
+    resp_data = resp.json()
+
+    accounts = resp_data.get("data", [])
+    return accounts[0]
+
+
+async def generate_ai_bio_handle(handle: str):
+    """
+    Generate a short AI-powered bio of an X (Twitter) account based on their profile and recent activity.
+    Streams the response for fast delivery.
+    
+    Args:
+        handle: Username (with or without @) of the account
+    
+    Yields:
+        str: Chunks of text as the bio is being generated
+    """
+    # Fetch account info
+    account = fetch_account_by_username(handle)
+    
+    # Fetch recent posts - order by engagement to get most important ones
+    posts = fetch_posts([account.get("id")], n_per_account=15, order_by="like_count")
+    
+    if not posts:
+        yield f"@{account.get('username', handle)} has no recent posts available."
+        return
+    
+    # Prepare minimal account data for speed
+    public_metrics = account.get("public_metrics", {})
+    account_data = {
+        "name": account.get("name", ""),
+        "username": account.get("username", ""),
+        "description": account.get("description", ""),
+        "verified": account.get("verified", False),
+        "public_metrics": public_metrics,
+    }
+    
+    # Prepare full post data for context
+    top_posts = []
+    for post_item in posts[:8]:
+        post = post_item.get("post", {})
+        # Truncate very long posts slightly for efficiency but keep full content
+        text = post.get("text", "")
+        if len(text) > 500:
+            text = text[:497] + "..."
+        top_posts.append({
+            "text": text,
+            "like_count": post.get("like_count", 0),
+            "retweet_count": post.get("retweet_count", 0),
+            "created_at": post.get("created_at", ""),
+        })
+    
+    client = OpenAI(
+        api_key=settings.XAI_TOKEN,
+        base_url="https://api.x.ai/v1"
+    )
+    
+    prompt = f"""Generate a 4-5 sentence flowing summary bio for this X (Twitter) account. 
+
+    Account Profile:
+    - Name: {account_data['name']}
+    - Username: @{account_data['username']}
+    - Description: {account_data['description']}
+    - Verified: {account_data['verified']}
+
+    Recent Top Posts (use these to understand their recent activity and topics):
+    {json.dumps(top_posts, indent=2)}
+
+    IMPORTANT: Write ONLY a flowing 4-5 sentence summary. Do NOT:
+    - List posts as bullet points
+    - Quote post text directly
+    - Use phrases like "recent posts include..." or "they posted about..."
+    - Break the summary into numbered points
+
+    Instead, synthesize the information into a natural, flowing narrative that:
+    1. Describes who they are based on their profile (1-2 sentences)
+    2. Weaves together their recent activity themes and topics naturally (2-3 sentences)
+
+    Output format: Plain flowing text, no formatting, no bullets, no quotes."""
+    
+    messages = [{"role": "user", "content": prompt}]
+    
+    # Stream the response for fast delivery
+    stream = client.chat.completions.create(
+        model="grok-4-1-fast-non-reasoning",
+        messages=messages,
+        temperature=0.3,  # Lower temperature for more focused, consistent output
+        stream=True,
+    )
+    
+    for chunk in stream:
+        if chunk.choices[0].delta.content is not None:
+            yield chunk.choices[0].delta.content
 
 
 def extract_expert_categories(ids: list[str]):    
