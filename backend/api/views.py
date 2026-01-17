@@ -26,7 +26,7 @@ from api.serializers import (
     XaiVoicesSerializer,
 )
 from api.core import QueryFilter
-from api.groksignal import get_expert_category_perspective, get_expert_overview, get_followup_response, generate_ai_bio_handle, fetch_account_by_username
+from api.groksignal import get_expert_category_perspective, get_expert_overview, get_followup_response, generate_ai_bio_handle, fetch_account_by_username, get_expert_debate_response
 from api.newspaper import generate_newspaper_articles
 
 
@@ -511,6 +511,23 @@ class GrokathonViewSet(viewsets.GenericViewSet):
 
     @action(
         detail=False,
+        methods=["get"],
+        serializer_class=XaiHandlesSummarySerializer,
+        filter_backends=[QueryFilter],
+        query_filters=["ids", "input_query"],
+        url_path="xai-handles-summary",
+        url_name="xai-handles-summary",
+    )
+    def xai_handles_summary(self, request):
+        ids = request.GET.getlist("ids")
+        input_query = request.GET.get("input_query")
+        serializer = XaiHandlesSummarySerializer(data={"ids": ids, "input_query": input_query})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    @action(
+        detail=False,
         methods=["post"],
         url_path="stream-followup",
         url_name="stream-followup",
@@ -588,20 +605,80 @@ class GrokathonViewSet(viewsets.GenericViewSet):
 
     @action(
         detail=False,
-        methods=["get"],
-        serializer_class=XaiHandlesSummarySerializer,
-        filter_backends=[QueryFilter],
-        query_filters=["ids", "input_query"],
-        url_path="xai-handles-summary",
-        url_name="xai-handles-summary",
+        methods=["post"],
+        url_path="stream-debate-response",
+        url_name="stream-debate-response",
     )
-    def xai_handles_summary(self, request):
-        ids = request.GET.getlist("ids")
-        input_query = request.GET.get("input_query")
-        serializer = XaiHandlesSummarySerializer(data={"ids": ids, "input_query": input_query})
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
+    def stream_debate_response(self, request):
+        """
+        Stream an expert's response in a debate context.
+        The expert responds based on their posts and what others have said.
+        
+        POST body (JSON):
+        - question: The debate question/topic
+        - expert_name: Display name of the expert
+        - expert_username: Username of the expert
+        - expert_role: Role/category (e.g., "F1 Driver")
+        - expert_posts: List of expert's posts [{text, like_count}]
+        - conversation_history: Previous responses [{speaker_name, speaker_role, text}]
+        - is_first_speaker: Boolean, whether this is the first speaker
+        
+        Returns a streaming text response.
+        """
+        data = request.data
+        question = data.get("question")
+        expert_name = data.get("expert_name")
+        expert_username = data.get("expert_username")
+        expert_role = data.get("expert_role")
+        expert_posts = data.get("expert_posts", [])
+        conversation_history = data.get("conversation_history", [])
+        is_first_speaker = data.get("is_first_speaker", False)
+        
+        if not question or not expert_name or not expert_username:
+            return Response(
+                {"error": "Missing required parameters: question, expert_name, expert_username"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        def stream_generator():
+            """Convert async generator to sync generator for StreamingHttpResponse"""
+            async def run_stream():
+                async for chunk in get_expert_debate_response(
+                    question=question,
+                    expert_name=expert_name,
+                    expert_username=expert_username,
+                    expert_role=expert_role or "Expert",
+                    expert_posts=expert_posts,
+                    conversation_history=conversation_history,
+                    is_first_speaker=is_first_speaker
+                ):
+                    yield chunk
+            
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            try:
+                async_gen = run_stream()
+                while True:
+                    try:
+                        chunk = loop.run_until_complete(async_gen.__anext__())
+                        if isinstance(chunk, str):
+                            yield chunk.encode('utf-8')
+                        else:
+                            yield chunk
+                    except StopAsyncIteration:
+                        break
+            finally:
+                loop.close()
+        
+        response = StreamingHttpResponse(
+            stream_generator(),
+            content_type='text/plain; charset=utf-8'
+        )
+        response['Cache-Control'] = 'no-cache'
+        response['X-Accel-Buffering'] = 'no'
+        return response
+>>>>>>> 40d7d89087a5fc3e488f5c0af9c22204a51fd1c6
 
     # ==================== xAI Voice API Endpoints ====================
     
@@ -795,3 +872,85 @@ class GrokathonViewSet(viewsets.GenericViewSet):
         
         result = generate_newspaper_articles(keyword, posts)
         return Response(result)
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="generate-podcast-script",
+        url_name="generate-podcast-script",
+    )
+    def generate_podcast_script(self, request):
+        """
+        Generate a podcast-style script from timeline posts using Grok.
+        
+        POST body (JSON):
+        - keyword: The topic/keyword for the podcast
+        - posts: List of post objects with author, username, text, likes, retweets
+        
+        Returns JSON with the podcast script.
+        """
+        from openai import OpenAI
+        from django.conf import settings
+        import json as json_module
+        
+        data = request.data
+        
+        keyword = data.get("keyword")
+        posts = data.get("posts", [])
+        
+        if not keyword:
+            return Response(
+                {"error": "Missing required parameter: keyword"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not posts:
+            return Response(
+                {"error": "Missing required parameter: posts"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Generate podcast script using Grok
+        client = OpenAI(
+            api_key=settings.XAI_TOKEN,
+            base_url="https://api.x.ai/v1"
+        )
+        
+        prompt = f"""You are a podcast host creating an engaging audio summary of the latest social media discussions about "{keyword}".
+
+Based on these recent posts from experts and thought leaders:
+{json_module.dumps(posts, indent=2)}
+
+Create a natural, conversational podcast script that:
+1. Opens with a brief, energetic introduction welcoming listeners to the show
+2. Summarizes the key themes and discussions happening around "{keyword}"
+3. Highlights 2-3 interesting perspectives or insights from specific users (mention them by name)
+4. Includes natural transitions between topics
+5. Ends with a brief wrap-up and sign-off
+
+IMPORTANT GUIDELINES:
+- Write in a conversational, podcast-friendly tone (as if speaking naturally)
+- Keep it concise - aim for about 60-90 seconds of speaking time (roughly 150-200 words)
+- Don't use hashtags, URLs, or @ symbols - just mention people by their display name
+- Add natural pauses with commas and periods
+- Don't include stage directions or sound effect notes
+- Make it sound like a real person talking, not reading
+
+Start directly with the script text, no meta-commentary."""
+
+        try:
+            response = client.chat.completions.create(
+                model="grok-4-1-fast-non-reasoning",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+            )
+            
+            script = response.choices[0].message.content
+            
+            return Response({"script": script})
+            
+        except Exception as e:
+            return Response(
+                {"error": f"Failed to generate podcast script: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
