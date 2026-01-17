@@ -184,6 +184,19 @@ else:
 
 CORS_ALLOW_CREDENTIALS = True
 
+# CSRF settings
+# Required for Django 4.x - trusted origins for CSRF protection
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS',
+    default='http://localhost:8000,http://127.0.0.1:8000,http://localhost:3000,http://127.0.0.1:3000'
+).split(',')
+
+# CSRF cookie settings for development
+if DEBUG:
+    CSRF_COOKIE_SECURE = False  # Allow CSRF cookie over HTTP in development
+    CSRF_COOKIE_HTTPONLY = False  # Allow JavaScript access in development (if needed)
+    SESSION_COOKIE_SECURE = False  # Allow session cookie over HTTP in development
+
 # API Tokens and Secrets
 # python-decouple reads from environment variables first (loaded by env_file in docker-compose)
 # then from .env files. The .env file is mounted at /app/.env in the container
