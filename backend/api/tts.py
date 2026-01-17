@@ -9,7 +9,6 @@ import websockets
 from dotenv import load_dotenv
 from django.conf import settings
 
-
 async def test_tts_websocket(
     uri: str,
     text: str,
