@@ -715,3 +715,47 @@ The response should be substantial (4-6 sections) but focused and well-organized
     for chunk in stream:
         if chunk.choices[0].delta.content is not None:
             yield chunk.choices[0].delta.content
+
+
+def get_xai_handles_summary(ids: list[str], input_query: str):
+    import os
+    from xai_sdk import Client
+    from xai_sdk.chat import user
+    from xai_sdk.tools import x_search
+    
+    # Use environment variable (safer than hard-coded settings)
+    api_key = settings.XAI_TOKEN
+    client = Client(api_key=api_key)
+
+    accounts = fetch_accounts(ids[:10])
+    allowed_x_handles = [account.get("username") for account in accounts]
+    
+    chat = client.chat.create(
+        model="grok-4-1-fast",
+        tools=[x_search(allowed_x_handles=allowed_x_handles)],
+    )
+    
+    chat.append(user(input_query))
+    
+    # Non-streaming: get the complete response using chat.sample()
+    response = chat.sample()
+    
+    # Extract the text - based on xAI SDK, response is typically an object
+    # with .content or similar; adjust if needed based on actual structure
+    if hasattr(response, 'content'):
+        return response.content.strip()
+    elif hasattr(response, 'message') and hasattr(response.message, 'content'):
+        return response.message.content.strip()
+    elif isinstance(response, str):
+        return response.strip()
+    else:
+        # Debug fallback
+        print("Unknown response format:", type(response), dir(response))
+        return str(response)
+
+# def test_xai_status():
+#     try:
+#         result = get_xai_status()
+#         print(result)
+#     except Exception as e:
+#         print("Error:", str(e))

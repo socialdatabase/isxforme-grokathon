@@ -20,6 +20,7 @@ from api.serializers import (
     FetchTopicsRanksHandleSerializer,
     FetchExpertCategoriesSerializer,
     FetchPostsTimelineSerializer,
+    XaiHandlesSummarySerializer,
     XaiTextToSpeechSerializer,
     XaiSpeechToTextSerializer,
     XaiVoicesSerializer,
@@ -510,6 +511,23 @@ class GrokathonViewSet(viewsets.GenericViewSet):
 
     @action(
         detail=False,
+        methods=["get"],
+        serializer_class=XaiHandlesSummarySerializer,
+        filter_backends=[QueryFilter],
+        query_filters=["ids", "input_query"],
+        url_path="xai-handles-summary",
+        url_name="xai-handles-summary",
+    )
+    def xai_handles_summary(self, request):
+        ids = request.GET.getlist("ids")
+        input_query = request.GET.get("input_query")
+        serializer = XaiHandlesSummarySerializer(data={"ids": ids, "input_query": input_query})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    @action(
+        detail=False,
         methods=["post"],
         url_path="stream-followup",
         url_name="stream-followup",
@@ -688,6 +706,7 @@ class GrokathonViewSet(viewsets.GenericViewSet):
         response['Cache-Control'] = 'no-cache'
         response['X-Accel-Buffering'] = 'no'
         return response
+>>>>>>> 40d7d89087a5fc3e488f5c0af9c22204a51fd1c6
 
     # ==================== xAI Voice API Endpoints ====================
     
