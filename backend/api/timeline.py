@@ -120,7 +120,8 @@ def fetch_grokathon_ids(input_query: str):
         "Authorization": f"Token {settings.SOCIAL_DATABASE_TOKEN}",
         "Content-Type": "application/json"
     }
-    search_instance = Search.objects.create(query=input_query, keywords=params.get("keywords"), countries=params.get("countries"), query_type=params.get("query_type"))
+    query_type = params.get("query_type") if params.get("query_type") else "interest"
+    search_instance = Search.objects.create(query=input_query, keywords=params.get("keywords"), countries=params.get("countries"), query_type=query_type)
 
     resp = requests.get(url, headers=headers, params=params)
     resp.raise_for_status()
