@@ -165,11 +165,20 @@ def process_media_data(media_data: list[dict]):
             ]
         elif "url" in media:
             media_url = media.get("url")
+        else:
+            media_url = None
         media_key = media.get("media_key")
         media_type = media.get("type")
         media_width = media.get("width")
         media_height = media.get("height")
-        media_dict[media_key] = {"url": media_url, "type": media_type, "width": media_width, "height": media_height}
+        preview_image_url = media.get("preview_image_url")  # Thumbnail for videos
+        media_dict[media_key] = {
+            "url": media_url, 
+            "type": media_type, 
+            "width": media_width, 
+            "height": media_height,
+            "preview_image_url": preview_image_url
+        }
     return media_dict
 
 
@@ -318,7 +327,61 @@ def fetch_posts_timeline(ids: list[str], n_per_account: int = 5, order_by: str =
     filtered_posts = [post for post in posts if post["post"].get("like_count", 0) > median_like_count]
     
     # If no posts pass the filter, return original posts
-    return filtered_posts if filtered_posts else posts
+    if not filtered_posts:
+        return posts
+    
+    # Distribute posts evenly across authors
+    # Priority: authors not yet in the list get priority
+    distributed_posts = []
+    authors_in_list = set()  # Track which authors are already represented
+    posts_to_append = []  # Posts from authors already in list (to append at the end)
+    
+    # Get all unique authors from filtered posts
+    all_unique_authors = set(post["post"].get("account_id") for post in filtered_posts)
+    
+    # First pass: prioritize posts from authors not yet in the list
+    for post in filtered_posts:
+        account_id = post["post"].get("account_id")
+        if account_id not in authors_in_list:
+            # This author is not yet in the list, add the post immediately
+            distributed_posts.append(post)
+            authors_in_list.add(account_id)
+        else:
+            # This author is already in the list, save for later
+            posts_to_append.append(post)
+    
+    # Second pass: only add posts from authors already in list if all authors are represented
+    all_authors_represented = len(authors_in_list) == len(all_unique_authors)
+    
+    if all_authors_represented:
+        # All authors have at least one post, now we can add additional posts
+        # Sort by engagement to prioritize high-engagement posts
+        posts_to_append.sort(key=lambda x: x["post"].get("like_count", 0), reverse=True)
+        
+        # Track post counts per author to maintain even distribution
+        author_post_counts = {account_id: 1 for account_id in authors_in_list}
+        
+        for post in posts_to_append:
+            account_id = post["post"].get("account_id")
+            # Find the minimum number of posts any author has
+            min_posts = min(author_post_counts.values())
+            
+            # Only add if this author doesn't have more posts than the minimum
+            if author_post_counts.get(account_id, 0) <= min_posts:
+                distributed_posts.append(post)
+                author_post_counts[account_id] = author_post_counts.get(account_id, 0) + 1
+    
+    # Track which posts have been added to distributed_posts
+    added_post_ids = {post["post"].get("id") for post in distributed_posts}
+    
+    # Append all leftover posts from filtered_posts that weren't added yet
+    leftover_posts = [post for post in filtered_posts if post["post"].get("id") not in added_post_ids]
+    
+    # Sort leftover posts by engagement and append at the end
+    leftover_posts.sort(key=lambda x: x["post"].get("created_at", 0), reverse=True)
+    distributed_posts.extend(leftover_posts)
+    
+    return distributed_posts
 
 
 def fetch_ids_handle_topics(handle: str, topics: list[str]):

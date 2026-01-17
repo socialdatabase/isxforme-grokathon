@@ -5,7 +5,7 @@
       <div class="header-row">
         <div class="header-text">
           <h2 class="debate-title">Expert Debate</h2>
-          <p class="debate-subtitle">Top 5 F1 authorities discuss: <span class="topic-highlight">{{ debateTopic }}</span></p>
+          <p class="debate-subtitle">Top experts discuss: <span class="topic-highlight">{{ keyword || 'Loading...' }}</span></p>
         </div>
         <!-- Voice Mode Toggle -->
         <div class="voice-mode" :class="{ active: voiceMode }">
@@ -30,7 +30,14 @@
     <!-- Participants Bar -->
     <div class="participants-bar">
       <div class="participants-label">Participants</div>
-      <div class="participants-list">
+      <div v-if="loadingExperts" class="participants-loading">
+        <div class="spinner-small"></div>
+        <span>Loading experts...</span>
+      </div>
+      <div v-else-if="experts.length === 0" class="participants-empty">
+        No experts found
+      </div>
+      <div v-else class="participants-list">
         <div 
           v-for="expert in experts" 
           :key="expert.username" 
@@ -40,7 +47,7 @@
           <img :src="expert.avatar" :alt="expert.name" class="participant-avatar" />
           <div class="participant-info">
             <span class="participant-name">{{ expert.name }}</span>
-            <span class="participant-handle">@{{ expert.username }}</span>
+            <span class="participant-role">{{ expert.role }}</span>
           </div>
           <div v-if="currentSpeaker === expert.username" class="speaking-indicator">
             <span class="dot"></span>
@@ -51,8 +58,19 @@
       </div>
     </div>
 
-    <!-- Chat Area -->
-    <div class="chat-area" ref="chatArea">
+    <!-- Ask Question Prompt (before debate starts) -->
+    <div v-if="!debateStarted && !loadingExperts && experts.length > 0" class="ask-prompt">
+      <button class="mic-button" @click="startRecording">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+          <path d="M12 1C10.34 1 9 2.34 9 4V12C9 13.66 10.34 15 12 15C13.66 15 15 13.66 15 12V4C15 2.34 13.66 1 12 1Z" fill="currentColor"/>
+          <path d="M19 10V12C19 15.87 15.87 19 12 19C8.13 19 5 15.87 5 12V10H3V12C3 16.41 6.28 20.06 10.5 20.82V24H13.5V20.82C17.72 20.06 21 16.41 21 12V10H19Z" fill="currentColor"/>
+        </svg>
+      </button>
+      <p class="ask-prompt-text">Ask your question to the expert panel</p>
+    </div>
+
+    <!-- Chat Area (only show when debate started) -->
+    <div v-if="debateStarted" class="chat-area" ref="chatArea">
       <div 
         v-for="(message, index) in displayedMessages" 
         :key="index" 
@@ -83,8 +101,8 @@
       </div>
     </div>
 
-    <!-- Debate Controls -->
-    <div class="debate-controls">
+    <!-- Debate Controls (only show when debate started) -->
+    <div v-if="debateStarted" class="debate-controls">
       <div class="control-info">
         <span class="message-count">{{ displayedMessages.length }} / {{ debateMessages.length }} messages</span>
       </div>
@@ -129,8 +147,11 @@
 </template>
 
 <script setup lang="ts">
+const config = useRuntimeConfig()
+
 const props = defineProps<{
   isActive: boolean
+  keyword?: string
 }>()
 
 interface Expert {
@@ -147,121 +168,146 @@ interface Message {
   displayedText?: string
 }
 
-const debateTopic = ref('Who will win the 2026 F1 Championship?')
+interface ApiAccount {
+  id: string
+  name: string
+  username: string
+  profile_image_url?: string
+  verified?: boolean
+  description?: string
+}
+
+const debateTopic = ref('')
 const currentSpeaker = ref<string | null>(null)
 const nextSpeaker = ref<string | null>(null)
 const isTyping = ref(false)
 const isPaused = ref(false)
 const chatArea = ref<HTMLElement | null>(null)
 const voiceMode = ref(true) // Voice mode on by default
+const loadingExperts = ref(false)
+const debateStarted = ref(false)
+
+// Start recording (placeholder - will trigger debate for now)
+const startRecording = () => {
+  debateStarted.value = true
+  startDebate()
+}
 
 const toggleVoiceMode = () => {
   voiceMode.value = !voiceMode.value
 }
 
-const experts: Expert[] = [
-  { 
-    name: 'Will Buxton', 
-    username: 'wbuxtonofficial', 
-    avatar: 'https://pbs.twimg.com/profile_images/1935077864577347584/EJo0lH27_normal.jpg',
-    verified: true,
-    role: 'F1 Journalist'
-  },
-  { 
-    name: 'Karun Chandhok', 
-    username: 'karaborun', 
-    avatar: 'https://pbs.twimg.com/profile_images/1346044246108white_normal.jpg',
-    verified: true,
-    role: 'Former F1 Driver & Analyst'
-  },
-  { 
-    name: 'Chris Medland', 
-    username: 'ChrisMedlandF1', 
-    avatar: 'https://pbs.twimg.com/profile_images/1683782659590848512/o6X8qGQp_normal.jpg',
-    verified: true,
-    role: 'F1 Correspondent'
-  },
-  { 
-    name: 'Lawrence Barretto', 
-    username: 'lawrobarretto', 
-    avatar: 'https://pbs.twimg.com/profile_images/1463936071893504003/AwVYvpRd_normal.jpg',
-    verified: true,
-    role: 'F1 Senior Writer'
-  },
-  { 
-    name: 'Matt Gallagher', 
-    username: 'MattGallagherF1', 
-    avatar: 'https://pbs.twimg.com/profile_images/1893327368464334848/swYpqR8N_normal.jpg',
-    verified: true,
-    role: 'F1 Content Creator'
-  },
-]
+// Dynamic experts - will be populated from API
+const experts = ref<Expert[]>([])
 
-const debateMessages: Message[] = [
-  {
-    speaker: 'wbuxtonofficial',
-    text: "Alright everyone, let's dive into it. 2026 is going to be massive with the new regulations. I think <strong>Ferrari</strong> finally has all the pieces in place. Hamilton joining, the new power unit, the momentum from their 2025 improvements..."
-  },
-  {
-    speaker: 'karaborun',
-    text: "I have to push back on that, Will. From a technical standpoint, <strong>Mercedes</strong> has been developing their 2026 power unit longer than anyone. They learned harsh lessons from the hybrid era and won't make the same mistakes. Their engine department is unmatched."
-  },
-  {
-    speaker: 'ChrisMedlandF1',
-    text: "Here's the thing though - we're forgetting about <strong>McLaren</strong>. They just won the constructors' in 2025, they have the best driver pairing on the grid with Norris and Piastri, and Zak Brown has built an incredible operation. Why would they suddenly fall off?"
-  },
-  {
-    speaker: 'lawrobarretto',
-    text: "Chris makes a good point, but regulation resets historically favor the big manufacturer teams. My money is still on Mercedes or Ferrari. <strong>Red Bull's transition to Ford</strong> is the real wild card here. That's a huge risk."
-  },
-  {
-    speaker: 'MattGallagherF1',
-    text: "Can we talk about <strong>Aston Martin</strong>? They have Adrian Newey now, Honda power, a brand new wind tunnel, and Lance's dad keeps writing checks. I think they're the dark horse that could shock everyone in 2026."
-  },
-  {
-    speaker: 'wbuxtonofficial',
-    text: "Matt, I love Aston's project, but Newey's cars typically take 2-3 years to really hit their stride. Remember when he joined Red Bull? The first year wasn't a championship winner. I'd say 2027 or 2028 for them."
-  },
-  {
-    speaker: 'karaborun',
-    text: "That's a fair point. But let's not underestimate the <strong>sustainable fuel regulations</strong>. This is completely new territory. Whoever has cracked that code in testing will have a massive advantage in the first half of the season."
-  },
-  {
-    speaker: 'ChrisMedlandF1',
-    text: "I've heard whispers that Ferrari's fuel partnership with Shell has produced some incredible results. If that's true, combined with Hamilton's experience and Leclerc's raw speed... that's a scary combination."
-  },
-  {
-    speaker: 'lawrobarretto',
-    text: "The driver factor is huge here. <strong>Hamilton at Ferrari</strong> is the storyline everyone's watching. But Verstappen is still Verstappen - if that Red Bull-Ford package is even 90% there, he'll drag it to victories."
-  },
-  {
-    speaker: 'MattGallagherF1',
-    text: "Final prediction time! I'm going bold: <strong>Ferrari wins constructors', but Verstappen wins drivers'</strong>. The Red Bull will be unreliable early on but Max will pull off some heroic drives to stay in it."
-  },
-  {
-    speaker: 'wbuxtonofficial',
-    text: "I'll say <strong>Ferrari double championship</strong> - Hamilton WDC, Ferrari WCC. It would be the perfect fairytale ending to Lewis's career and I genuinely believe they have the package to do it."
-  },
-  {
-    speaker: 'karaborun',
-    text: "You're all sleeping on Mercedes! <strong>George Russell WDC, Mercedes WCC</strong>. Mark my words. That team knows how to nail regulation changes and George is ready to lead."
-  },
-  {
-    speaker: 'ChrisMedlandF1',
-    text: "I'm sticking with <strong>McLaren</strong>. Norris WDC, McLaren WCC. They've built something special and I don't see why new regulations would change their trajectory. They have the best in-season development."
-  },
-  {
-    speaker: 'lawrobarretto',
-    text: "Safe pick from me: <strong>Verstappen WDC</strong> (4th title!), but <strong>Ferrari WCC</strong>. The two Ferrari drivers will take points off each other while Max stays consistent. Classic scenario."
-  },
-]
+// Fetch experts from the top 5 expert categories
+const fetchExperts = async (keyword: string) => {
+  loadingExperts.value = true
+  experts.value = []
+  debateTopic.value = `What are the key insights on ${keyword}?`
+  
+  try {
+    // Step 1: Fetch IDs for the keyword
+    const idsResponse = await $fetch<{ ids: string[] }>(
+      `${config.public.apiBase}/grokathon/fetch-ids/?input_query=${encodeURIComponent(keyword)}`
+    )
+
+    if (!idsResponse.ids || idsResponse.ids.length === 0) {
+      return
+    }
+
+    // Step 2: Fetch expert categories
+    const idsParams = idsResponse.ids.slice(0, 100).map((id: string) => `ids=${id}`).join('&')
+    const categoriesResponse = await $fetch<{ categories: Record<string, number[]> }>(
+      `${config.public.apiBase}/grokathon/fetch-expert-categories/?${idsParams}`
+    )
+
+    if (!categoriesResponse.categories) {
+      return
+    }
+
+    // Sort categories by count and take top 5
+    const sortedCategories = Object.entries(categoriesResponse.categories)
+      .sort((a, b) => b[1].length - a[1].length)
+      .slice(0, 5)
+
+    // Get the first ID from each category
+    const expertIds = sortedCategories.map(([_, ids]) => ids[0]).filter(Boolean)
+
+    if (expertIds.length === 0) {
+      return
+    }
+
+    // Step 3: Fetch account details for these experts
+    const expertIdsParams = expertIds.map((id: number) => `ids=${id}`).join('&')
+    const accountsResponse = await $fetch<{ accounts: ApiAccount[] }>(
+      `${config.public.apiBase}/grokathon/fetch-accounts/?${expertIdsParams}`
+    )
+
+    if (accountsResponse.accounts && accountsResponse.accounts.length > 0) {
+      // Map accounts to experts with their category as role
+      experts.value = accountsResponse.accounts.map((acc: ApiAccount, index: number) => ({
+        name: acc.name || acc.username,
+        username: acc.username,
+        avatar: acc.profile_image_url?.replace('_normal', '_400x400') || '',
+        verified: acc.verified || false,
+        role: sortedCategories[index]?.[0] || 'Expert'
+      }))
+    }
+  } catch (err) {
+    console.error('Error fetching experts:', err)
+  } finally {
+    loadingExperts.value = false
+  }
+}
+
+// Debate messages will be populated dynamically
+const debateMessages = ref<Message[]>([])
 
 const displayedMessages = ref<Message[]>([])
 const currentMessageIndex = ref(0)
 const currentCharIndex = ref(0)
 
 const getExpert = (username: string): Expert => {
-  return experts.find(e => e.username === username) || experts[0]
+  return experts.value.find(e => e.username === username) || experts.value[0] || {
+    name: 'Expert',
+    username: username,
+    avatar: '',
+    verified: false,
+    role: 'Expert'
+  }
+}
+
+// Generate initial debate messages based on loaded experts
+const generateDebateIntro = () => {
+  if (experts.value.length === 0) return
+  
+  const keyword = props.keyword || 'this topic'
+  const messages: Message[] = []
+  
+  // First expert introduces the topic
+  if (experts.value[0]) {
+    messages.push({
+      speaker: experts.value[0].username,
+      text: `Welcome everyone! Today we're discussing <strong>${keyword}</strong>. As a ${experts.value[0].role}, I've been following this topic closely. Let me share my perspective...`
+    })
+  }
+  
+  // Other experts respond
+  experts.value.slice(1).forEach((expert, index) => {
+    const responses = [
+      `That's an interesting take. From my experience as a ${expert.role}, I see things a bit differently when it comes to <strong>${keyword}</strong>...`,
+      `I'd like to add to that discussion. The ${expert.role} perspective on <strong>${keyword}</strong> reveals some fascinating insights...`,
+      `Great points so far. What's often overlooked about <strong>${keyword}</strong> is the nuance that comes from the ${expert.role} angle...`,
+      `Building on what's been said, I think the key aspect of <strong>${keyword}</strong> that we should focus on is...`
+    ]
+    messages.push({
+      speaker: expert.username,
+      text: responses[index % responses.length]
+    })
+  })
+  
+  debateMessages.value = messages
 }
 
 const scrollToBottom = () => {
@@ -275,21 +321,21 @@ const scrollToBottom = () => {
 const typeMessage = () => {
   if (isPaused.value) return
   
-  if (currentMessageIndex.value >= debateMessages.length) {
+  if (currentMessageIndex.value >= debateMessages.value.length) {
     isTyping.value = false
     currentSpeaker.value = null
     nextSpeaker.value = null
     return
   }
 
-  const message = debateMessages[currentMessageIndex.value]
+  const message = debateMessages.value[currentMessageIndex.value]
   
   // Set current speaker
   currentSpeaker.value = message.speaker
   
   // Set next speaker for typing indicator
-  if (currentMessageIndex.value + 1 < debateMessages.length) {
-    nextSpeaker.value = debateMessages[currentMessageIndex.value + 1].speaker
+  if (currentMessageIndex.value + 1 < debateMessages.value.length) {
+    nextSpeaker.value = debateMessages.value[currentMessageIndex.value + 1].speaker
   } else {
     nextSpeaker.value = null
   }
@@ -328,7 +374,22 @@ const typeMessage = () => {
   }
 }
 
-const startDebate = () => {
+const startDebate = async () => {
+  // First fetch experts if we have a keyword and don't have experts yet
+  if (props.keyword && experts.value.length === 0) {
+    await fetchExperts(props.keyword)
+  }
+  
+  // Generate debate messages if not yet generated
+  if (debateMessages.value.length === 0 && experts.value.length > 0) {
+    generateDebateIntro()
+  }
+  
+  // Don't start if no messages
+  if (debateMessages.value.length === 0) {
+    return
+  }
+  
   displayedMessages.value = []
   currentMessageIndex.value = 0
   currentCharIndex.value = 0
@@ -343,17 +404,28 @@ const restartDebate = () => {
 
 const togglePause = () => {
   isPaused.value = !isPaused.value
-  if (!isPaused.value && currentMessageIndex.value < debateMessages.length) {
+  if (!isPaused.value && currentMessageIndex.value < debateMessages.value.length) {
     typeMessage()
   }
 }
 
-// Start debate when component becomes active
-watch(() => props.isActive, (active: boolean) => {
-  if (active) {
-    startDebate()
+// Load experts when component becomes active (but don't start debate)
+watch(() => props.isActive, async (active: boolean) => {
+  if (active && props.keyword && experts.value.length === 0) {
+    await fetchExperts(props.keyword)
   }
 }, { immediate: true })
+
+// Re-fetch when keyword changes
+watch(() => props.keyword, async (newKeyword: string | undefined) => {
+  if (newKeyword && props.isActive) {
+    experts.value = []
+    debateMessages.value = []
+    displayedMessages.value = []
+    debateStarted.value = false
+    await fetchExperts(newKeyword)
+  }
+})
 </script>
 
 <style scoped>
@@ -521,6 +593,29 @@ watch(() => props.isActive, (active: boolean) => {
   gap: 0.75rem;
 }
 
+.participants-loading,
+.participants-empty {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #71767b;
+  font-size: 0.9rem;
+  padding: 0.5rem 0;
+}
+
+.spinner-small {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #2f3336;
+  border-top-color: #1d9bf0;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .participant {
   display: flex;
   align-items: center;
@@ -559,6 +654,52 @@ watch(() => props.isActive, (active: boolean) => {
 .participant-handle {
   font-size: 0.75rem;
   color: #71767b;
+}
+
+.participant-role {
+  font-size: 0.7rem;
+  color: #1d9bf0;
+  font-weight: 500;
+}
+
+/* Ask Question Prompt */
+.ask-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  gap: 1.5rem;
+}
+
+.mic-button {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background-color: #fff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #000;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 20px rgba(255, 255, 255, 0.2);
+}
+
+.mic-button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 30px rgba(255, 255, 255, 0.3);
+}
+
+.mic-button:active {
+  transform: scale(0.95);
+}
+
+.ask-prompt-text {
+  font-size: 1.1rem;
+  color: #71767b;
+  text-align: center;
 }
 
 .speaking-indicator {
