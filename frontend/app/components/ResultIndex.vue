@@ -34,7 +34,7 @@
       <!-- Top Community View -->
       <template v-else-if="viewMode === 'community'">
         <p class="results-subtitle">
-          Top {{ authorityAccounts.length }} authorities in <span class="topic-highlight">{{ currentTopic }}</span>
+          Top {{ authorityAccounts.length }} authorities<span v-if="currentTopic"> in <span class="topic-highlight">{{ currentTopic }}</span></span>
         </p>
         
         <!-- Authority Index Grid -->
@@ -64,8 +64,10 @@
               <!-- Rank Badge -->
               <div class="rank-badge" :class="getRankClass(index)">
                 <span class="rank-number">#{{ Number(index) + 1 }}</span>
-                <span class="rank-in">in</span>
-                <span class="rank-topic">{{ currentTopic }}</span>
+                <template v-if="currentTopic">
+                  <span class="rank-in">in</span>
+                  <span class="rank-topic">{{ currentTopic }}</span>
+                </template>
               </div>
             </div>
           </div>
@@ -151,14 +153,25 @@ const formatFollowers = (count: number): string => {
 // Fetch accounts from API
 const fetchAccounts = async (keyword: string) => {
   loading.value = true
+  currentTopic.value = '' // Reset while loading (don't show topic until inferred)
   authorityAccounts.value = [] // Reset while loading
   showResults.value = true
 
   try {
-    // Step 1: Fetch IDs for the keyword (backend returns strings)
-    const idsResponse = await $fetch<{ ids: string[] }>(
-      `${config.public.apiBase}/grokathon/fetch-ids/?input_query=${encodeURIComponent(keyword)}`
-    )
+    // Step 1: Fetch IDs and infer topic in parallel
+    const [idsResponse, topicResponse] = await Promise.all([
+      $fetch<{ ids: string[] }>(
+        `${config.public.apiBase}/grokathon/fetch-ids/?input_query=${encodeURIComponent(keyword)}`
+      ),
+      $fetch<{ topic: string | null }>(
+        `${config.public.apiBase}/grokathon/infer-topic-in-query/?input_query=${encodeURIComponent(keyword)}`
+      ).catch(() => ({ topic: null })) // Fallback if topic inference fails
+    ])
+
+    // Update currentTopic only if the API returns a topic (otherwise leave empty)
+    if (topicResponse.topic) {
+      currentTopic.value = topicResponse.topic
+    }
 
     if (!idsResponse.ids || idsResponse.ids.length === 0) {
       return // No results found
@@ -197,14 +210,12 @@ const fetchAccounts = async (keyword: string) => {
 
 const selectCategory = async (category: string) => {
   selectedCategory.value = category
-  currentTopic.value = category
   await fetchAccounts(category)
 }
 
 // Watch for keyword changes from parent
 watch(() => props.keyword, (newKeyword: string) => {
   if (newKeyword) {
-    currentTopic.value = newKeyword
     fetchAccounts(newKeyword)
   }
 }, { immediate: true })

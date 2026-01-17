@@ -204,6 +204,9 @@ const totalEntitiesCount = ref(0)
 const loadingGrokResponse = ref(false)
 const grokResponseLoaded = ref(false)
 
+// Inferred topic from the keyword (cleaner display name)
+const currentTopic = ref<string>('')
+
 // Conversation history for follow-up questions
 interface ConversationMessage {
   role: 'user' | 'assistant'
@@ -213,7 +216,7 @@ const conversationHistory = ref<ConversationMessage[]>([])
 
 // Computed for dynamic question based on topic and selected expert view
 const currentQuestion = computed(() => {
-  const topic = props.keyword
+  const topic = currentTopic.value || props.keyword
   if (!topic) return 'Waiting for topic...'
   if (selectedExpertView.value) {
     return `What's the latest from ${selectedExpertView.value} on ${topic}?`
@@ -305,15 +308,26 @@ const fetchExpertCategories = async (ids: string[]) => {
 // Fetch accounts from API
 const fetchEntities = async (keyword: string) => {
   loadingEntities.value = true
+  currentTopic.value = keyword // Temporary fallback while loading
   allEntityAccounts.value = []
   allEntityIds.value = []
   expertCategories.value = []
 
   try {
-    // Step 1: Fetch IDs for the keyword
-    const idsResponse = await $fetch<{ ids: string[] }>(
-      `${config.public.apiBase}/grokathon/fetch-ids/?input_query=${encodeURIComponent(keyword)}`
-    )
+    // Step 1: Fetch IDs and infer topic in parallel
+    const [idsResponse, topicResponse] = await Promise.all([
+      $fetch<{ ids: string[] }>(
+        `${config.public.apiBase}/grokathon/fetch-ids/?input_query=${encodeURIComponent(keyword)}`
+      ),
+      $fetch<{ topic: string | null }>(
+        `${config.public.apiBase}/grokathon/infer-topic-in-query/?input_query=${encodeURIComponent(keyword)}`
+      ).catch(() => ({ topic: null })) // Fallback if topic inference fails
+    ])
+
+    // Update currentTopic with the inferred topic (or keep keyword as fallback)
+    if (topicResponse.topic) {
+      currentTopic.value = topicResponse.topic
+    }
 
     if (!idsResponse.ids || idsResponse.ids.length === 0) {
       return
@@ -439,13 +453,14 @@ const streamGrokOverview = async (ids: string[]) => {
   if (ids.length === 0 || grokResponseLoaded.value || !props.keyword) return
   
   const keyword = props.keyword
+  const topic = currentTopic.value || keyword
   loadingGrokResponse.value = true
   isTyping.value = true
   displayedResponse.value = ''
   
   // Reset conversation history for new topic
   conversationHistory.value = []
-  const initialQuestion = `What are the latest expert views on ${keyword}?`
+  const initialQuestion = `What are the latest expert views on ${topic}?`
   
   try {
     const idsParams = ids.slice(0, 50).map((id: string) => `ids=${id}`).join('&')
@@ -493,12 +508,13 @@ const streamExpertPerspective = async (category: string, ids: number[]) => {
   if (ids.length === 0 || !props.keyword) return
   
   const keyword = props.keyword
+  const topic = currentTopic.value || keyword
   isTyping.value = true
   displayedResponse.value = ''
   
   // Reset conversation history for new expert category
   conversationHistory.value = []
-  const initialQuestion = `What's the latest from ${category} on ${keyword}?`
+  const initialQuestion = `What's the latest from ${category} on ${topic}?`
   
   try {
     const idsParams = ids.slice(0, 50).map((id: number) => `ids=${id}`).join('&')

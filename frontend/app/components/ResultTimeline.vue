@@ -86,7 +86,7 @@
             </div>
             <div class="wtf-rank">
               <span class="rank-number">#{{ Number(index) + 1 }}</span>
-              <span class="rank-topic">{{ currentTopic }}</span>
+              <span v-if="currentTopic" class="rank-topic">{{ currentTopic }}</span>
             </div>
           </div>
         </div>
@@ -356,14 +356,24 @@ const whoToFollow = ref<AuthorityAccount[]>([])
 // Fetch accounts from API
 const fetchAccounts = async (keyword: string) => {
   loading.value = true
-  currentTopic.value = keyword
+  currentTopic.value = '' // Reset while loading (don't show topic until inferred)
   whoToFollow.value = [] // Reset while loading
 
   try {
-    // Step 1: Fetch IDs for the keyword (backend returns strings)
-    const idsResponse = await $fetch<{ ids: string[] }>(
-      `${config.public.apiBase}/grokathon/fetch-ids/?input_query=${encodeURIComponent(keyword)}`
-    )
+    // Step 1: Fetch IDs and infer topic in parallel
+    const [idsResponse, topicResponse] = await Promise.all([
+      $fetch<{ ids: string[] }>(
+        `${config.public.apiBase}/grokathon/fetch-ids/?input_query=${encodeURIComponent(keyword)}`
+      ),
+      $fetch<{ topic: string | null }>(
+        `${config.public.apiBase}/grokathon/infer-topic-in-query/?input_query=${encodeURIComponent(keyword)}`
+      ).catch(() => ({ topic: null })) // Fallback if topic inference fails
+    ])
+
+    // Update currentTopic only if the API returns a topic (otherwise leave empty)
+    if (topicResponse.topic) {
+      currentTopic.value = topicResponse.topic
+    }
 
     if (!idsResponse.ids || idsResponse.ids.length === 0) {
       return // No results found
