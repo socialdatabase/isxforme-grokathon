@@ -314,10 +314,10 @@ const fetchPosts = async (keyword: string) => {
     // Take up to 50 IDs for posts
     const idsToFetch = idsResponse.ids.slice(0, 50)
 
-    // Step 2: Fetch posts for those accounts
+    // Step 2: Fetch posts for those accounts using timeline endpoint (filters for higher engagement posts)
     const idsParams = idsToFetch.map((id: string) => `ids=${id}`).join('&')
     const postsResponse = await $fetch<{ posts: ApiPost[] }>(
-      `${config.public.apiBase}/grokathon/fetch-posts/?${idsParams}`
+      `${config.public.apiBase}/grokathon/fetch-posts-timeline/?${idsParams}`
     )
 
     if (postsResponse.posts && postsResponse.posts.length > 0) {
