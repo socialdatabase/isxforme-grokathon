@@ -157,166 +157,6 @@ def extract_expert_categories(ids: list[str]):
         }
 
 
-async def get_expert_overview(input_query: str, ids: list[str]):
-    """
-    Stream an overview of expert views on a given query by analyzing recent posts from multiple accounts.
-    This is the initial response when the user asks "What are the latest expert views on [topic]?"
-    
-    Args:
-        input_query: The user's query/topic of interest
-        ids: List of account IDs to analyze (typically top 100 from the index)
-    
-    Yields:
-        str: Chunks of text as the response is being generated
-    """
-    # Fetch posts for these accounts (get posts per account for analysis)
-    posts = fetch_posts(ids, n_per_account=10, order_by="like_count")
-    
-    if not posts:
-        yield f"No recent posts found related to {input_query}."
-        return
-    
-    # Prepare post data for analysis (limit to most relevant posts)
-    posts_data = []
-    for post_item in posts[:60]:  # Limit to top 60 posts for analysis
-        post = post_item.get("post", {})
-        account = post_item.get("account", {})
-        posts_data.append({
-            "account_username": account.get("username", ""),
-            "account_name": account.get("name", ""),
-            "text": post.get("text", ""),
-            "created_at": post.get("created_at", ""),
-            "like_count": post.get("like_count", 0),
-            "retweet_count": post.get("retweet_count", 0),
-        })
-    
-    client = OpenAI(
-        api_key=settings.XAI_TOKEN,
-        base_url="https://api.x.ai/v1"
-    )
-    
-    prompt = f"""You are an expert analyst providing a comprehensive overview of the latest discussions and perspectives on a given topic, based on recent social media posts from relevant experts and thought leaders.
-
-User Question: "What are the latest expert views on {input_query}?"
-
-Recent posts from experts and thought leaders on this topic:
-{json.dumps(posts_data, indent=2)}
-
-Your task is to provide a comprehensive, well-structured response that:
-1. Opens with a brief overview of the current state of discussions around "{input_query}"
-2. Identifies and explains the key themes, trends, and talking points
-3. Highlights notable insights, opinions, and developments from the experts
-4. Provides specific examples and references to posts where relevant (mention usernames with @ prefix)
-5. Organizes the information into clear sections with <h4> headings
-6. Uses <strong> tags to emphasize key terms, names, and important points
-7. Uses <ul> and <li> tags for lists where appropriate
-8. Includes <blockquote> tags for notable quotes from the posts, with source links like: <a href="https://x.com/username" class="source-link">@username</a>
-
-Write in a clear, engaging, and informative style. The response should be comprehensive (aim for 4-6 paragraphs/sections) but focused on what's most relevant and interesting.
-
-Important: Do NOT include any markdown code fences or JSON formatting. Write the response directly as HTML-formatted text."""
-
-    messages = [{"role": "user", "content": prompt}]
-    
-    # Stream the response
-    stream = client.chat.completions.create(
-        model="grok-4-1-fast-non-reasoning",
-        messages=messages,
-        temperature=0.4,
-        stream=True,
-    )
-    
-    for chunk in stream:
-        if chunk.choices[0].delta.content is not None:
-            yield chunk.choices[0].delta.content
-
-
-async def get_expert_category_perspective(input_query: str, expert_category: str, ids: list[str]):
-    """
-    Stream the perspective of an expert category on a given query by analyzing their recent posts.
-    This is an async generator that yields chunks of text as the perspective is generated.
-    
-    Args:
-        input_query: The user's query/topic of interest
-        expert_category: The name of the expert category (e.g., "F1 Drivers", "ML Researchers")
-        ids: List of account IDs belonging to this expert category
-    
-    Yields:
-        str: Chunks of text as the perspective is being generated
-    """
-    # Fetch accounts and their recent posts
-    accounts = []
-    for chunk in chunks(ids, 100):
-        accounts += fetch_accounts(chunk)
-    
-    # Fetch posts for these accounts (get more posts per account for better analysis)
-    posts = fetch_posts(ids, n_per_account=10, order_by="like_count")
-    
-    if not posts:
-        yield f"No recent posts found from {expert_category} accounts related to this topic."
-        return
-    
-    # Prepare post data for analysis (limit to most relevant/recent posts)
-    # Take top posts by engagement and recency
-    posts_data = []
-    for post_item in posts[:50]:  # Limit to top 50 posts for analysis
-        post = post_item.get("post", {})
-        account = post_item.get("account", {})
-        posts_data.append({
-            "account_username": account.get("username", ""),
-            "text": post.get("text", ""),
-            "created_at": post.get("created_at", ""),
-            "like_count": post.get("like_count", 0),
-            "retweet_count": post.get("retweet_count", 0),
-        })
-    
-    client = OpenAI(
-        api_key=settings.XAI_TOKEN,
-        base_url="https://api.x.ai/v1"
-    )
-    
-    prompt = f"""You are analyzing the perspective of a specific expert category on a given topic. Your task is to provide a comprehensive, detailed, and elaborative analysis.
-
-    Expert Category: {expert_category}
-    User Query/Topic: {input_query}
-
-    Recent posts from accounts in this expert category:
-    {json.dumps(posts_data, indent=2)}
-
-    Your task is to write a comprehensive, detailed, and elaborative perspective that:
-    1. Analyzes how this expert category views and discusses the topic "{input_query}"
-    2. Synthesizes their collective perspective - identify common themes, concerns, insights, viewpoints, and patterns
-    3. Provides specific examples and quotes from their posts where relevant
-    4. Explains the context and significance of their viewpoints
-    5. Highlights what makes their perspective unique or valuable
-    6. Discusses any trends, developments, or emerging discussions they're having
-    7. Elaborates on the implications of their views and what it means for the broader conversation
-
-    Write in a clear, engaging, and comprehensive style. Be detailed and elaborative - don't just summarize, but provide deep analysis and context. The response should be substantial (aim for 5-8 paragraphs or more if needed to fully cover the topic).
-
-    Structure your response as a flowing narrative that:
-    - Opens with an overview of how this expert category approaches the topic
-    - Dives deep into specific themes, viewpoints, and discussions
-    - Provides concrete examples and highlights from their recent posts
-    - Explores the nuances and implications of their perspective
-    - Concludes with key takeaways or emerging patterns
-
-    Write the perspective directly, without any JSON formatting or additional structure. Just provide the comprehensive analysis as flowing text."""
-
-    messages = [{"role": "user", "content": prompt}]
-    
-    # Stream the response
-    stream = client.chat.completions.create(
-        model="grok-4-1-fast-non-reasoning",
-        messages=messages,
-        temperature=0.4,  # Higher temperature for more creative and elaborative responses
-        stream=True,  # Enable streaming
-    )
-    
-    for chunk in stream:
-        if chunk.choices[0].delta.content is not None:
-            yield chunk.choices[0].delta.content
-
 
 def clean_text_for_speech(text: str) -> str:
     """
@@ -434,3 +274,241 @@ def speech_to_text(audio_file):
             file=file_obj
         )
     return transcript.text
+
+
+async def get_expert_overview(input_query: str, ids: list[str]):
+    """
+    Stream an overview of expert views on a given query by analyzing recent posts from multiple accounts.
+    This is the initial response when the user asks "What are the latest expert views on [topic]?"
+    
+    Args:
+        input_query: The user's query/topic of interest
+        ids: List of account IDs to analyze (typically top 100 from the index)
+    
+    Yields:
+        str: Chunks of text as the response is being generated
+    """
+    # Fetch posts for these accounts (get posts per account for analysis)
+    posts = fetch_posts(ids, n_per_account=10, order_by="like_count")
+    
+    if not posts:
+        yield f"No recent posts found related to {input_query}."
+        return
+    
+    # Prepare post data for analysis (limit to most relevant posts)
+    posts_data = []
+    for post_item in posts[:60]:  # Limit to top 60 posts for analysis
+        post = post_item.get("post", {})
+        account = post_item.get("account", {})
+        posts_data.append({
+            "account_username": account.get("username", ""),
+            "account_name": account.get("name", ""),
+            "text": post.get("text", ""),
+            "created_at": post.get("created_at", ""),
+            "like_count": post.get("like_count", 0),
+            "retweet_count": post.get("retweet_count", 0),
+        })
+    
+    client = OpenAI(
+        api_key=settings.XAI_TOKEN,
+        base_url="https://api.x.ai/v1"
+    )
+    
+    prompt = f"""You are an expert analyst providing a comprehensive overview of the latest discussions and perspectives on a given topic, based on recent social media posts from relevant experts and thought leaders.
+
+User Question: "What are the latest expert views on {input_query}?"
+
+Recent posts from experts and thought leaders on this topic:
+{json.dumps(posts_data, indent=2)}
+
+Your task is to provide a comprehensive, well-structured response that:
+1. Opens with a brief overview of the current state of discussions around "{input_query}"
+2. Identifies and explains the key themes, trends, and talking points
+3. Highlights notable insights, opinions, and developments from the experts
+4. Provides specific examples and references to posts where relevant (mention usernames with @ prefix)
+5. Organizes the information into clear sections with <h4> headings
+6. Uses <strong> tags to emphasize key terms, names, and important points
+7. Uses <ul> and <li> tags for lists where appropriate
+8. Includes <blockquote> tags for notable quotes from the posts, with source links like: <a href="https://x.com/username" class="source-link">@username</a>
+
+Write in a clear, engaging, and informative style. The response should be comprehensive (aim for 4-6 paragraphs/sections) but focused on what's most relevant and interesting.
+
+Important: Do NOT include any markdown code fences or JSON formatting. Write the response directly as HTML-formatted text."""
+
+    messages = [{"role": "user", "content": prompt}]
+    
+    # Stream the response
+    stream = client.chat.completions.create(
+        model="grok-4-1-fast-non-reasoning",
+        messages=messages,
+        temperature=0.4,
+        stream=True,
+    )
+    
+    for chunk in stream:
+        if chunk.choices[0].delta.content is not None:
+            yield chunk.choices[0].delta.content
+
+
+async def get_followup_response(
+    followup_question: str,
+    conversation_history: list[dict],
+    input_query: str,
+    ids: list[str],
+    expert_category: str = None
+):
+    """
+    Stream a response to a follow-up question, continuing the conversation context.
+    
+    Args:
+        followup_question: The user's follow-up question
+        conversation_history: Previous messages in the conversation (list of {role, content} dicts)
+        input_query: The original topic/keyword
+        ids: List of account IDs for context (used to fetch recent posts)
+        expert_category: Optional expert category for filtering context
+    
+    Yields:
+        str: Chunks of text as the response is being generated
+    """
+    # Fetch posts for context (use same posts as the conversation)
+    posts = fetch_posts(ids, n_per_account=10, order_by="like_count")
+    
+    # Prepare post data for context
+    posts_data = []
+    for post_item in posts[:40]:  # Limit for follow-ups
+        post = post_item.get("post", {})
+        account = post_item.get("account", {})
+        posts_data.append({
+            "account_username": account.get("username", ""),
+            "text": post.get("text", ""),
+            "like_count": post.get("like_count", 0),
+        })
+    
+    client = OpenAI(
+        api_key=settings.XAI_TOKEN,
+        base_url="https://api.x.ai/v1"
+    )
+    
+    # Build the system message with context
+    context_description = f"about {expert_category}" if expert_category else "from various experts"
+    system_message = f"""You are an expert analyst helping users understand discussions and perspectives on "{input_query}" {context_description}.
+
+You have access to recent posts from relevant experts on this topic:
+{json.dumps(posts_data, indent=2)}
+
+When answering follow-up questions:
+1. Continue the conversation naturally, building on previous responses
+2. Reference specific posts and experts when relevant (use @username format)
+3. Use HTML formatting: <strong> for emphasis, <h4> for section headings if needed, <ul>/<li> for lists
+4. Include <blockquote> tags for notable quotes with source links
+5. Be comprehensive but focused on answering the specific question
+6. Do NOT use markdown - only HTML formatting"""
+
+    # Build messages with conversation history
+    messages = [{"role": "system", "content": system_message}]
+    
+    # Add conversation history
+    for msg in conversation_history:
+        messages.append(msg)
+    
+    # Add the new follow-up question
+    messages.append({"role": "user", "content": followup_question})
+    
+    # Stream the response
+    stream = client.chat.completions.create(
+        model="grok-4-1-fast-non-reasoning",
+        messages=messages,
+        temperature=0.4,
+        stream=True,
+    )
+    
+    for chunk in stream:
+        if chunk.choices[0].delta.content is not None:
+            yield chunk.choices[0].delta.content
+
+
+async def get_expert_category_perspective(input_query: str, expert_category: str, ids: list[str]):
+    """
+    Stream the perspective of an expert category on a given query by analyzing their recent posts.
+    This is an async generator that yields chunks of text as the perspective is generated.
+    
+    Args:
+        input_query: The user's query/topic of interest
+        expert_category: The name of the expert category (e.g., "F1 Drivers", "ML Researchers")
+        ids: List of account IDs belonging to this expert category
+    
+    Yields:
+        str: Chunks of text as the perspective is being generated
+    """
+    # Fetch accounts and their recent posts
+    accounts = []
+    for chunk in chunks(ids, 100):
+        accounts += fetch_accounts(chunk)
+    
+    # Fetch posts for these accounts (get more posts per account for better analysis)
+    posts = fetch_posts(ids, n_per_account=10, order_by="like_count")
+    
+    if not posts:
+        yield f"No recent posts found from {expert_category} accounts related to this topic."
+        return
+    
+    # Prepare post data for analysis (limit to most relevant/recent posts)
+    # Take top posts by engagement and recency
+    posts_data = []
+    for post_item in posts[:50]:  # Limit to top 50 posts for analysis
+        post = post_item.get("post", {})
+        account = post_item.get("account", {})
+        posts_data.append({
+            "account_username": account.get("username", ""),
+            "text": post.get("text", ""),
+            "created_at": post.get("created_at", ""),
+            "like_count": post.get("like_count", 0),
+            "retweet_count": post.get("retweet_count", 0),
+        })
+    
+    client = OpenAI(
+        api_key=settings.XAI_TOKEN,
+        base_url="https://api.x.ai/v1"
+    )
+    
+    prompt = f"""You are analyzing the perspective of a specific expert category on a given topic. Your task is to provide a comprehensive, detailed, and elaborative analysis.
+
+    Expert Category: {expert_category}
+    User Query/Topic: {input_query}
+
+    Recent posts from accounts in this expert category:
+    {json.dumps(posts_data, indent=2)}
+
+    Your task is to write a comprehensive, detailed, and elaborative perspective that:
+    1. Analyzes how this expert category views and discusses the topic "{input_query}"
+    2. Synthesizes their collective perspective - identify common themes, concerns, insights, viewpoints, and patterns
+    3. Provides specific examples and quotes from their posts where relevant
+    4. Explains the context and significance of their viewpoints
+    5. Highlights what makes their perspective unique or valuable
+    6. Discusses any trends, developments, or emerging discussions they're having
+    7. Elaborates on the implications of their views and what it means for the broader conversation
+
+    Write in a clear, engaging, and comprehensive style. Be detailed and elaborative - don't just summarize, but provide deep analysis and context. The response should be substantial (aim for 5-8 paragraphs or more if needed to fully cover the topic).
+
+    Structure your response as a flowing narrative that:
+    - Opens with an overview of how this expert category approaches the topic
+    - Dives deep into specific themes, viewpoints, and discussions
+    - Provides concrete examples and highlights from their recent posts
+    - Explores the nuances and implications of their perspective
+    - Concludes with key takeaways or emerging patterns
+
+    Write the perspective directly, without any JSON formatting or additional structure. Just provide the comprehensive analysis as flowing text."""
+
+    messages = [{"role": "user", "content": prompt}]
+    
+    # Stream the response
+    stream = client.chat.completions.create(
+        model="grok-4-1-fast-non-reasoning",
+        messages=messages,
+        temperature=0.4,  # Higher temperature for more creative and elaborative responses
+        stream=True,  # Enable streaming
+    )
+    
+    for chunk in stream:
+        if chunk.choices[0].delta.content is not None:
+            yield chunk.choices[0].delta.content
