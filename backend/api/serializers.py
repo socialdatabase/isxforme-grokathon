@@ -15,6 +15,7 @@ from api.timeline import (
 )
 from api.groksignal import (
     extract_expert_categories,
+    get_xai_handles_summary,
 )
 from api.voicethomas import (
     text_to_speech as xai_text_to_speech,
@@ -285,4 +286,17 @@ class XaiVoicesSerializer(serializers.Serializer):
     
     def save(self, **kwargs):
         self.instance = {"voices": get_available_voices()}
+        return self.instance
+
+
+class XaiHandlesSummarySerializer(serializers.Serializer):
+    ids = serializers.ListField(child=serializers.CharField(), write_only=True)
+    input_query = serializers.CharField(write_only=True)
+    summary = serializers.CharField(read_only=True)
+
+    def save(self, **kwargs):
+        ids = self.validated_data.get('ids')
+        input_query = self.validated_data.get('input_query')
+        summary = get_xai_handles_summary(ids, input_query)
+        self.instance = {"summary": summary}
         return self.instance
