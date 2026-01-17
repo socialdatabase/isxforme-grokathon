@@ -1,5 +1,21 @@
 <template>
   <div class="container">
+    <!-- Full-page Shooting Stars Overlay -->
+    <transition name="fade">
+      <div v-if="showStars" class="stars-overlay" @click="skipStars">
+        <div class="shooting-stars-fullpage">
+          <div class="star star-1"></div>
+          <div class="star star-2"></div>
+          <div class="star star-3"></div>
+          <div class="star star-4"></div>
+          <div class="star star-5"></div>
+          <div class="star star-6"></div>
+          <div class="star star-7"></div>
+          <div class="star star-8"></div>
+        </div>
+      </div>
+    </transition>
+
     <!-- Hero Section / Toggle -->
     <header class="hero" :class="{ collapsed: showTabs }" @click="collapseHero">
       <transition name="fade" mode="out-in">
@@ -152,6 +168,7 @@ interface SelectedAccountData {
 }
 
 const showTabs = ref(false)
+const showStars = ref(true)
 const activeTab = ref<'overview' | 'timeline' | 'groksignal' | 'index' | 'account' | 'debate'>('overview')
 const selectedAccount = ref<SelectedAccountData | null>(null)
 const searchKeyword = ref('') // Start empty, will be set from query
@@ -194,6 +211,11 @@ const applyQueryParams = () => {
 }
 
 const collapseHero = () => {
+  showTabs.value = true
+}
+
+const skipStars = () => {
+  showStars.value = false
   showTabs.value = true
 }
 
@@ -316,9 +338,18 @@ onMounted(() => {
   applyQueryParams()
   
   if (!route.query.tab) {
+    // Show shooting stars for 2 seconds, then show message
+    setTimeout(() => {
+      showStars.value = false
+    }, 2000)
+    
+    // Collapse after 5 seconds total (2s stars + 3s message)
     setTimeout(() => {
       showTabs.value = true
     }, 5000)
+  } else {
+    // Skip stars if coming from a specific tab
+    showStars.value = false
   }
 })
 
@@ -350,6 +381,105 @@ definePageMeta({
 
 .hero-content {
   padding: 1rem 0;
+}
+
+/* Full-page Shooting Stars Overlay */
+.stars-overlay {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 9999;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.shooting-stars-fullpage {
+  position: absolute;
+  inset: 0;
+}
+
+.star {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 8px 3px rgba(255, 255, 255, 0.7);
+  opacity: 0;
+  animation: shooting 1.2s ease-out forwards;
+}
+
+.star::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 120px;
+  height: 2px;
+  background: linear-gradient(to left, rgba(255, 255, 255, 0.9), transparent);
+  right: 4px;
+}
+
+.star-1 {
+  top: 15%;
+  left: 5%;
+  animation-delay: 0s;
+}
+
+.star-2 {
+  top: 35%;
+  left: 25%;
+  animation-delay: 0.15s;
+}
+
+.star-3 {
+  top: 10%;
+  left: 50%;
+  animation-delay: 0.3s;
+}
+
+.star-4 {
+  top: 55%;
+  left: 15%;
+  animation-delay: 0.25s;
+}
+
+.star-5 {
+  top: 25%;
+  left: 70%;
+  animation-delay: 0.4s;
+}
+
+.star-6 {
+  top: 65%;
+  left: 40%;
+  animation-delay: 0.5s;
+}
+
+.star-7 {
+  top: 45%;
+  left: 60%;
+  animation-delay: 0.35s;
+}
+
+.star-8 {
+  top: 75%;
+  left: 75%;
+  animation-delay: 0.55s;
+}
+
+@keyframes shooting {
+  0% {
+    opacity: 1;
+    transform: translateX(0) translateY(0);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(300px) translateY(150px);
+  }
 }
 
 .hero-title {
