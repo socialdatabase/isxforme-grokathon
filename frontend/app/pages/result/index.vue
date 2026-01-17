@@ -58,7 +58,7 @@
               </div>
             </button>
           </div>
-          <BaseTabs v-model="activeTab" />
+          <BaseTabs v-model="activeTabUi" />
         </div>
       </transition>
     </header>
@@ -138,12 +138,17 @@ interface SelectedAccountData {
 
 const showTabs = ref(false)
 const showStars = ref(true)
+const activeTabUi = ref<'overview' | 'timeline' | 'groksignal' | 'index'>('overview')
 const activeTab = ref<'overview' | 'timeline' | 'groksignal' | 'index' | 'account' | 'debate'>('overview')
 const selectedAccount = ref<SelectedAccountData | null>(null)
 const searchKeyword = ref('') // Start empty, will be set from query
 const searchInput = ref('') // Input field value
 const podcastMode = ref(false)
 const showNewspaper = ref(false)
+
+watch(activeTabUi, () => {
+  activeTab.value = activeTabUi.value;
+})
 
 // Apply query params and reset state for fresh search
 const applyQueryParams = () => {
