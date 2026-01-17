@@ -476,16 +476,15 @@ async def get_expert_category_perspective(input_query: str, expert_category: str
         base_url="https://api.x.ai/v1"
     )
     
-    prompt = f"""You are analyzing the perspective of a specific expert category on a given topic. Your task is to provide a comprehensive, detailed analysis.
+    prompt = f"""You are analyzing the latest from a specific expert category on a given topic. Your task is to provide a comprehensive, detailed analysis.
 
-Expert Category: {expert_category}
-User Query/Topic: {input_query}
+User Question: "What's the latest from {expert_category} on {input_query}?"
 
-Recent posts from accounts in this expert category:
+Recent posts from {expert_category}:
 {json.dumps(posts_data, indent=2)}
 
-Your task is to write a comprehensive perspective that:
-1. Analyzes how this expert category views and discusses the topic "{input_query}"
+Your task is to write a comprehensive response that:
+1. Covers the latest discussions and developments from {expert_category} on "{input_query}"
 2. Synthesizes their collective perspective - identify common themes, concerns, insights, and patterns
 3. References specific experts inline using <strong>@username</strong> format
 4. Explains the context and significance of their viewpoints

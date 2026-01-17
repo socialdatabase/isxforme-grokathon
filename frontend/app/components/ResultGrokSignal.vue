@@ -216,7 +216,7 @@ const currentQuestion = computed(() => {
   const topic = props.keyword
   if (!topic) return 'Waiting for topic...'
   if (selectedExpertView.value) {
-    return `What do ${selectedExpertView.value} think about ${topic}?`
+    return `What's the latest from ${selectedExpertView.value} on ${topic}?`
   }
   return `What are the latest expert views on ${topic}?`
 })
@@ -498,7 +498,7 @@ const streamExpertPerspective = async (category: string, ids: number[]) => {
   
   // Reset conversation history for new expert category
   conversationHistory.value = []
-  const initialQuestion = `What do ${category} think about ${keyword}?`
+  const initialQuestion = `What's the latest from ${category} on ${keyword}?`
   
   try {
     const idsParams = ids.slice(0, 50).map((id: number) => `ids=${id}`).join('&')
