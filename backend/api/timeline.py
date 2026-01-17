@@ -259,7 +259,6 @@ def fetch_posts(ids: list[str], n_per_account: int = 5, order_by: str = "created
         resp = requests.get(url, params=params, headers=headers)
         resp_data = resp.json()
         includes = resp_data.get("includes", {})
-        print(includes)
         return {
             "post_items": resp_data.get("data", []),
             "media_data": includes.get("media", []),
