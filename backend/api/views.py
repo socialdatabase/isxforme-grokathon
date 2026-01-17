@@ -2,6 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import permissions
+from api.core import BotThrottle
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.http import StreamingHttpResponse, HttpResponse
@@ -121,6 +122,7 @@ class GrokathonViewSet(viewsets.GenericViewSet):
     """Open Grokathon API endpoints - no authentication or CSRF required"""
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [BotThrottle]
     serializer_class = None
     filter_backends = [QueryFilter]
     query_filters = []
