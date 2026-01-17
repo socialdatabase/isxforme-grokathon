@@ -55,7 +55,7 @@ def fetch_video_from_request_id(request_id: str, max_sleep_time: int = 120):
             raise Exception(f"Max sleep time reached for request {request_id}")
     
     result = response.json()
-    return result.get("url", result)
+    return result['video']['url']
 
 
 def fetch_video_from_image(image_url: str, text: str):

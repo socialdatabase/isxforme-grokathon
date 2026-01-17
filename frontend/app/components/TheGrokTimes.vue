@@ -36,7 +36,10 @@
           <p class="byline">By {{ articles[0].author }} | {{ articles[0].section }}</p>
           <div class="lead-layout">
             <div class="lead-image" v-if="articles[0].image">
-              <img :src="articles[0].image" :alt="articles[0].headline" @error="handleImageError($event, 0)" />
+              <video v-if="articles[0].video" :poster="articles[0].image" :src="articles[0].video" muted loop
+                @mouseenter="($event.target as HTMLVideoElement).play()"
+                @mouseleave="v => { (v.target as HTMLVideoElement).pause(); (v.target as HTMLVideoElement).currentTime = 0; }" />
+              <img v-else :src="articles[0].image" :alt="articles[0].headline" @error="handleImageError($event, 0)" />
               <p class="image-caption">{{ articles[0].imageCaption }}</p>
             </div>
             <div class="lead-text">
@@ -49,7 +52,10 @@
         <div class="stories-grid">
           <article v-for="(article, index) in articles.slice(1, 5)" :key="index" class="story-card">
             <div class="story-image" v-if="article.image">
-              <img :src="article.image" :alt="article.headline" @error="handleImageError($event, Number(index) + 1)" />
+              <video v-if="article.video" :poster="article.image" :src="article.video" muted loop
+                @mouseenter="($event.target as HTMLVideoElement).play()"
+                @mouseleave="v => { (v.target as HTMLVideoElement).pause(); (v.target as HTMLVideoElement).currentTime = 0; }" />
+              <img v-else :src="article.image" :alt="article.headline" @error="handleImageError($event, Number(index) + 1)" />
             </div>
             <h3 class="headline headline-secondary">{{ article.headline }}</h3>
             <p class="byline">{{ article.author }}</p>
@@ -92,6 +98,8 @@ interface Article {
   image: string | null
   imageCaption: string
   source_usernames?: string[]  // New optional field
+  video?: string | null  // New field for video URL
+  prompt_text?: string
 }
 
 interface ApiPost {
@@ -136,6 +144,27 @@ const currentDate = computed(() => {
 const handleImageError = (event: Event, index: number) => {
   const img = event.target as HTMLImageElement
   img.style.display = 'none'
+}
+
+// Changed: Made assignVideos async and use a sequential for-await loop to generate videos one by one
+const assignVideos = async () => {
+  for (const article of articles.value) {
+    if (article.image) {
+      try {
+        const res = await $fetch<{ video_url: string }>(
+          `${config.public.apiBase}/grokathon/xai-image-to-video/`,
+          {
+            method: 'POST',
+            body: { image_url: article.image, text: article.content || '' }
+          }
+        )
+        console.log(res.video_url)
+        article.video = res.video_url || null
+      } catch (e) {
+        console.error('Video generation error for image:', article.image, e)
+      }
+    }
+  }
 }
 
 const generateNewspaper = async (keyword: string) => {
@@ -281,6 +310,7 @@ const generateNewspaper = async (keyword: string) => {
             imageCaption: article.imageCaption || `Related to ${keyword}`
           }
         })
+        assignVideos()  // Start generating videos async
       } else {
         console.log('No articles returned, using fallback')
         generateFallbackArticles(postsResponse.posts, keyword)
