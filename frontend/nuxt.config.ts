@@ -31,6 +31,6 @@ export default defineNuxtConfig({
 
   css: ['~/assets/css/main.css'],
 
-  modules: ['@pinia/nuxt', '@nuxt/ui']
+  modules: ['@pinia/nuxt', '@nuxt/ui', 'nuxt-og-image',]
 })
 
