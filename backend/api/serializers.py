@@ -18,6 +18,12 @@ from api.groksignal import (
     text_to_speech,
     speech_to_text,
 )
+from api.voicethomas import (
+    text_to_speech as xai_text_to_speech,
+    speech_to_text as xai_speech_to_text,
+    get_available_voices,
+    AVAILABLE_VOICES,
+)
 
 
 class PublicMetricsSerializer(serializers.Serializer):
@@ -254,4 +260,53 @@ class SpeechToTextSerializer(serializers.Serializer):
         audio = self.validated_data.get('audio')
         text = speech_to_text(audio)
         self.instance = {"text": text}
+        return self.instance
+
+
+class XaiTextToSpeechSerializer(serializers.Serializer):
+    """
+    Serializer for xAI text-to-speech conversion.
+    Uses xAI's realtime WebSocket API with Grok voices.
+    Available voices: ara, rex, sal, eve, una, leo
+    """
+    text = serializers.CharField(write_only=True, max_length=20000)
+    voice = serializers.ChoiceField(
+        choices=[(v, v.title()) for v in AVAILABLE_VOICES],
+        default="ara",
+        write_only=True,
+        required=False
+    )
+    
+    def save(self, **kwargs):
+        text = self.validated_data.get('text')
+        voice = self.validated_data.get('voice', 'ara')
+        audio_content = xai_text_to_speech(text, voice_id=voice, output_format="wav")
+        self.instance = {"audio": audio_content}
+        return self.instance
+
+
+class XaiSpeechToTextSerializer(serializers.Serializer):
+    """
+    Serializer for xAI speech-to-text conversion.
+    Uses xAI's realtime WebSocket API for transcription.
+    """
+    audio = serializers.FileField(write_only=True)
+    text = serializers.CharField(read_only=True)
+
+    def save(self, **kwargs):
+        audio = self.validated_data.get('audio')
+        text = xai_speech_to_text(audio)
+        self.instance = {"text": text}
+        return self.instance
+
+
+class XaiVoicesSerializer(serializers.Serializer):
+    """Serializer for listing available xAI voices."""
+    voices = serializers.ListField(
+        child=serializers.CharField(),
+        read_only=True
+    )
+    
+    def save(self, **kwargs):
+        self.instance = {"voices": get_available_voices()}
         return self.instance

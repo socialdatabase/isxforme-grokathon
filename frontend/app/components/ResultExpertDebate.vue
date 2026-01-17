@@ -60,13 +60,39 @@
 
     <!-- Ask Question Prompt (before debate starts) -->
     <div v-if="!debateStarted && !loadingExperts && experts.length > 0" class="ask-prompt">
-      <button class="mic-button" @click="startRecording">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+      <button 
+        class="mic-button" 
+        :class="{ recording: isRecording, processing: isProcessingAudio }"
+        @click="toggleRecording"
+        :disabled="isProcessingAudio"
+      >
+        <!-- Recording animation -->
+        <div v-if="isRecording" class="recording-pulse"></div>
+        
+        <!-- Processing spinner -->
+        <div v-if="isProcessingAudio" class="processing-spinner"></div>
+        
+        <!-- Mic icon -->
+        <svg v-if="!isProcessingAudio" width="48" height="48" viewBox="0 0 24 24" fill="none">
           <path d="M12 1C10.34 1 9 2.34 9 4V12C9 13.66 10.34 15 12 15C13.66 15 15 13.66 15 12V4C15 2.34 13.66 1 12 1Z" fill="currentColor"/>
           <path d="M19 10V12C19 15.87 15.87 19 12 19C8.13 19 5 15.87 5 12V10H3V12C3 16.41 6.28 20.06 10.5 20.82V24H13.5V20.82C17.72 20.06 21 16.41 21 12V10H19Z" fill="currentColor"/>
         </svg>
       </button>
-      <p class="ask-prompt-text">Ask your question to the expert panel</p>
+      <p class="ask-prompt-text">
+        <span v-if="isProcessingAudio">Processing your question...</span>
+        <span v-else-if="isRecording">Recording... Tap to stop</span>
+        <span v-else>Tap to ask your question</span>
+      </p>
+      
+      <!-- Show transcribed text if available -->
+      <div v-if="transcribedQuestion" class="transcribed-question">
+        <p class="transcribed-label">Your question:</p>
+        <p class="transcribed-text">"{{ transcribedQuestion }}"</p>
+        <div class="transcribed-actions">
+          <button class="action-btn cancel" @click="cancelQuestion">Try again</button>
+          <button class="action-btn confirm" @click="confirmQuestion">Start debate</button>
+        </div>
+      </div>
     </div>
 
     <!-- Chat Area (only show when debate started) -->
@@ -187,10 +213,136 @@ const voiceMode = ref(true) // Voice mode on by default
 const loadingExperts = ref(false)
 const debateStarted = ref(false)
 
-// Start recording (placeholder - will trigger debate for now)
-const startRecording = () => {
-  debateStarted.value = true
-  startDebate()
+// Voice recording state
+const isRecording = ref(false)
+const isProcessingAudio = ref(false)
+const transcribedQuestion = ref('')
+const mediaRecorder = ref<MediaRecorder | null>(null)
+const audioChunks = ref<Blob[]>([])
+
+// Toggle recording on/off
+const toggleRecording = async () => {
+  if (isRecording.value) {
+    stopRecording()
+  } else {
+    await startRecording()
+  }
+}
+
+// Start recording audio from microphone
+const startRecording = async () => {
+  try {
+    // Reset state
+    audioChunks.value = []
+    transcribedQuestion.value = ''
+    
+    // Request microphone access
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+      audio: {
+        sampleRate: 16000,
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true
+      } 
+    })
+    
+    // Create MediaRecorder with appropriate mime type
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
+      ? 'audio/webm;codecs=opus' 
+      : MediaRecorder.isTypeSupported('audio/webm')
+        ? 'audio/webm'
+        : 'audio/mp4'
+    
+    mediaRecorder.value = new MediaRecorder(stream, { mimeType })
+    
+    mediaRecorder.value.ondataavailable = (event: BlobEvent) => {
+      if (event.data.size > 0) {
+        audioChunks.value.push(event.data)
+      }
+    }
+    
+    mediaRecorder.value.onstop = async () => {
+      // Stop all tracks
+      stream.getTracks().forEach(track => track.stop())
+      
+      // Process the recorded audio
+      await processRecordedAudio()
+    }
+    
+    // Start recording
+    mediaRecorder.value.start(100) // Collect data every 100ms
+    isRecording.value = true
+    
+  } catch (error) {
+    console.error('Error starting recording:', error)
+    alert('Could not access microphone. Please ensure you have granted permission.')
+  }
+}
+
+// Stop recording
+const stopRecording = () => {
+  if (mediaRecorder.value && isRecording.value) {
+    mediaRecorder.value.stop()
+    isRecording.value = false
+  }
+}
+
+// Process recorded audio and send to STT endpoint
+const processRecordedAudio = async () => {
+  if (audioChunks.value.length === 0) {
+    console.error('No audio recorded')
+    return
+  }
+  
+  isProcessingAudio.value = true
+  
+  try {
+    // Create blob from recorded chunks
+    const audioBlob = new Blob(audioChunks.value, { type: audioChunks.value[0].type })
+    
+    // Create FormData and append the audio file
+    const formData = new FormData()
+    formData.append('audio', audioBlob, 'recording.webm')
+    
+    // Send to xAI speech-to-text endpoint
+    const response = await fetch(`${config.public.apiBase}/grokathon/xai-speech-to-text/`, {
+      method: 'POST',
+      body: formData
+    })
+    
+    if (!response.ok) {
+      throw new Error(`STT request failed: ${response.status}`)
+    }
+    
+    const data = await response.json()
+    
+    if (data.text) {
+      transcribedQuestion.value = data.text
+    } else {
+      throw new Error('No transcription returned')
+    }
+    
+  } catch (error) {
+    console.error('Error processing audio:', error)
+    alert('Failed to transcribe audio. Please try again.')
+  } finally {
+    isProcessingAudio.value = false
+  }
+}
+
+// Cancel the transcribed question and allow re-recording
+const cancelQuestion = () => {
+  transcribedQuestion.value = ''
+  audioChunks.value = []
+}
+
+// Confirm the question and start the debate
+const confirmQuestion = () => {
+  if (transcribedQuestion.value) {
+    debateTopic.value = transcribedQuestion.value
+    debateStarted.value = true
+    startDebate()
+  }
 }
 
 const toggleVoiceMode = () => {
@@ -282,24 +434,38 @@ const getExpert = (username: string): Expert => {
 const generateDebateIntro = () => {
   if (experts.value.length === 0) return
   
-  const keyword = props.keyword || 'this topic'
+  // Use transcribed question if available, otherwise fall back to keyword
+  const topic = debateTopic.value || props.keyword || 'this topic'
+  const isQuestion = debateTopic.value && (debateTopic.value.includes('?') || debateTopic.value.toLowerCase().startsWith('what') || debateTopic.value.toLowerCase().startsWith('how') || debateTopic.value.toLowerCase().startsWith('why'))
   const messages: Message[] = []
   
   // First expert introduces the topic
   if (experts.value[0]) {
-    messages.push({
-      speaker: experts.value[0].username,
-      text: `Welcome everyone! Today we're discussing <strong>${keyword}</strong>. As a ${experts.value[0].role}, I've been following this topic closely. Let me share my perspective...`
-    })
+    if (isQuestion) {
+      messages.push({
+        speaker: experts.value[0].username,
+        text: `Great question! "<strong>${topic}</strong>" - As a ${experts.value[0].role}, I've thought a lot about this. Let me share my perspective...`
+      })
+    } else {
+      messages.push({
+        speaker: experts.value[0].username,
+        text: `Welcome everyone! Today we're discussing <strong>${topic}</strong>. As a ${experts.value[0].role}, I've been following this topic closely. Let me share my perspective...`
+      })
+    }
   }
   
   // Other experts respond
   experts.value.slice(1).forEach((expert, index) => {
-    const responses = [
-      `That's an interesting take. From my experience as a ${expert.role}, I see things a bit differently when it comes to <strong>${keyword}</strong>...`,
-      `I'd like to add to that discussion. The ${expert.role} perspective on <strong>${keyword}</strong> reveals some fascinating insights...`,
-      `Great points so far. What's often overlooked about <strong>${keyword}</strong> is the nuance that comes from the ${expert.role} angle...`,
-      `Building on what's been said, I think the key aspect of <strong>${keyword}</strong> that we should focus on is...`
+    const responses = isQuestion ? [
+      `That's a thoughtful answer. From my experience as a ${expert.role}, I'd add that when it comes to "<strong>${topic}</strong>"...`,
+      `I'd like to expand on that. The ${expert.role} perspective on this question reveals some fascinating insights...`,
+      `Great points so far. What's often overlooked in this discussion is the nuance that comes from the ${expert.role} angle...`,
+      `Building on what's been said, I think the key aspect we should focus on is...`
+    ] : [
+      `That's an interesting take. From my experience as a ${expert.role}, I see things a bit differently when it comes to <strong>${topic}</strong>...`,
+      `I'd like to add to that discussion. The ${expert.role} perspective on <strong>${topic}</strong> reveals some fascinating insights...`,
+      `Great points so far. What's often overlooked about <strong>${topic}</strong> is the nuance that comes from the ${expert.role} angle...`,
+      `Building on what's been said, I think the key aspect of <strong>${topic}</strong> that we should focus on is...`
     ]
     messages.push({
       speaker: expert.username,
@@ -685,21 +851,146 @@ watch(() => props.keyword, async (newKeyword: string | undefined) => {
   color: #000;
   transition: all 0.2s ease;
   box-shadow: 0 4px 20px rgba(255, 255, 255, 0.2);
+  position: relative;
+  overflow: visible;
 }
 
-.mic-button:hover {
+.mic-button:hover:not(:disabled) {
   transform: scale(1.05);
   box-shadow: 0 6px 30px rgba(255, 255, 255, 0.3);
 }
 
-.mic-button:active {
+.mic-button:active:not(:disabled) {
   transform: scale(0.95);
+}
+
+.mic-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+/* Recording state */
+.mic-button.recording {
+  background-color: #f91880;
+  color: #fff;
+  animation: pulse-glow 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(249, 24, 128, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(249, 24, 128, 0.8);
+  }
+}
+
+/* Recording pulse animation behind button */
+.recording-pulse {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background-color: rgba(249, 24, 128, 0.3);
+  animation: recording-pulse-anim 1.5s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes recording-pulse-anim {
+  0% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+/* Processing state */
+.mic-button.processing {
+  background-color: #1d9bf0;
+  color: #fff;
+}
+
+.processing-spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 
 .ask-prompt-text {
   font-size: 1.1rem;
   color: #71767b;
   text-align: center;
+  min-height: 1.5em;
+}
+
+/* Transcribed question display */
+.transcribed-question {
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+  background-color: #16181c;
+  border: 1px solid #2f3336;
+  border-radius: 16px;
+  max-width: 500px;
+  width: 100%;
+  animation: fadeIn 0.3s ease;
+}
+
+.transcribed-label {
+  font-size: 0.85rem;
+  color: #71767b;
+  margin-bottom: 0.5rem;
+}
+
+.transcribed-text {
+  font-size: 1.1rem;
+  color: #e7e9ea;
+  font-style: italic;
+  line-height: 1.5;
+  margin-bottom: 1rem;
+}
+
+.transcribed-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.action-btn {
+  padding: 0.6rem 1.25rem;
+  border-radius: 50px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.action-btn.cancel {
+  background-color: transparent;
+  border: 1px solid #536471;
+  color: #e7e9ea;
+}
+
+.action-btn.cancel:hover {
+  background-color: rgba(239, 243, 244, 0.1);
+  border-color: #71767b;
+}
+
+.action-btn.confirm {
+  background-color: #fff;
+  border: 1px solid #fff;
+  color: #000;
+}
+
+.action-btn.confirm:hover {
+  background-color: #d1d1d1;
+  border-color: #d1d1d1;
 }
 
 .speaking-indicator {

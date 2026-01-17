@@ -22,6 +22,9 @@ from api.serializers import (
     TextToSpeechSerializer,
     SpeechToTextSerializer,
     FetchPostsTimelineSerializer,
+    XaiTextToSpeechSerializer,
+    XaiSpeechToTextSerializer,
+    XaiVoicesSerializer,
 )
 from api.core import QueryFilter
 from api.groksignal import get_expert_category_perspective, get_expert_overview, get_followup_response, generate_ai_bio_handle, fetch_account_by_username
@@ -669,6 +672,162 @@ class GrokathonViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+    # ==================== xAI Voice API Endpoints ====================
+    
+    @action(
+        detail=False,
+        methods=["post", "get"],
+        serializer_class=XaiTextToSpeechSerializer,
+        filter_backends=[QueryFilter],
+        query_filters=["text", "voice"],
+        url_path="xai-text-to-speech",
+        url_name="xai-text-to-speech",
+    )
+    def xai_text_to_speech(self, request):
+        """
+        Convert text to speech using xAI's Grok Voice API.
+        
+        Query parameters (GET) or body (POST):
+        - text: The text to convert to speech (required)
+        - voice: Voice to use - ara, rex, sal, eve, una, leo (optional, default: ara)
+        
+        Returns an audio file (WAV format, PCM linear16, 24kHz).
+        """
+        # Support both GET and POST
+        if request.method == 'GET':
+            text = request.GET.get("text")
+            voice = request.GET.get("voice", "ara")
+        else:
+            text = request.data.get("text") or request.GET.get("text")
+            voice = request.data.get("voice") or request.GET.get("voice", "ara")
+        
+        if not text:
+            return Response(
+                {"error": "Missing required parameter: text"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        serializer = XaiTextToSpeechSerializer(data={"text": text, "voice": voice})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        
+        audio_content = serializer.instance.get("audio")
+        
+        if not audio_content:
+            return Response(
+                {"error": "Failed to generate speech"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        # Return audio file as response
+        response = HttpResponse(audio_content, content_type='audio/wav')
+        response['Content-Disposition'] = 'inline; filename="speech.wav"'
+        response['Content-Length'] = len(audio_content)
+        return response
+
+    @action(
+        detail=False,
+        methods=["post"],
+        serializer_class=XaiSpeechToTextSerializer,
+        filter_backends=[QueryFilter],
+        query_filters=[],
+        url_path="xai-speech-to-text",
+        url_name="xai-speech-to-text",
+    )
+    def xai_speech_to_text(self, request):
+        """
+        Convert speech to text using xAI's Grok Voice API.
+        
+        POST request with multipart/form-data:
+        - audio: The audio file to convert to text (file upload)
+                 Recommended: WAV format, PCM linear16, 16kHz
+        
+        Returns JSON with transcribed text.
+        """
+        audio_file = request.FILES.get("audio")
+        
+        if not audio_file:
+            return Response(
+                {"error": "Missing required file: audio"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        serializer = XaiSpeechToTextSerializer(data={"audio": audio_file})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        serializer_class=XaiVoicesSerializer,
+        filter_backends=[QueryFilter],
+        query_filters=[],
+        url_path="xai-voices",
+        url_name="xai-voices",
+    )
+    def xai_voices(self, request):
+        """
+        Get the list of available xAI voices for text-to-speech.
+        
+        Returns JSON with list of voice IDs: ara, rex, sal, eve, una, leo
+        """
+        serializer = XaiVoicesSerializer(data={})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    @action(
+        detail=False,
+        methods=["post", "get"],
+        filter_backends=[QueryFilter],
+        query_filters=["text", "voice"],
+        url_path="xai-text-to-speech-stream",
+        url_name="xai-text-to-speech-stream",
+    )
+    def xai_text_to_speech_stream(self, request):
+        """
+        Stream text to speech using xAI's Grok Voice API.
+        Returns audio chunks as they're generated for real-time playback.
+        
+        Query parameters (GET) or body (POST):
+        - text: The text to convert to speech (required)
+        - voice: Voice to use - ara, rex, sal, eve, una, leo (optional, default: ara)
+        
+        Returns streaming audio (PCM linear16, 24kHz).
+        """
+        from api.voicethomas import text_to_speech_stream
+        
+        # Support both GET and POST
+        if request.method == 'GET':
+            text = request.GET.get("text")
+            voice = request.GET.get("voice", "ara")
+        else:
+            text = request.data.get("text") or request.GET.get("text")
+            voice = request.data.get("voice") or request.GET.get("voice", "ara")
+        
+        if not text:
+            return Response(
+                {"error": "Missing required parameter: text"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        def stream_generator():
+            """Stream audio chunks from xAI TTS."""
+            for chunk in text_to_speech_stream(text, voice_id=voice):
+                yield chunk
+        
+        response = StreamingHttpResponse(
+            stream_generator(),
+            content_type='audio/pcm'
+        )
+        response['Cache-Control'] = 'no-cache'
+        response['X-Accel-Buffering'] = 'no'
+        response['X-Audio-Sample-Rate'] = '24000'
+        response['X-Audio-Channels'] = '1'
+        response['X-Audio-Format'] = 'linear16'
+        return response
 
     @action(
         detail=False,
