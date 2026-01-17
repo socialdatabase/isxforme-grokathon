@@ -97,7 +97,7 @@
 
     <!-- Expert Debate Tab Content -->
     <div v-if="activeTab === 'debate'" class="tab-content">
-      <ResultExpertDebate :is-active="activeTab === 'debate'" />
+      <ResultExpertDebate :is-active="activeTab === 'debate'" :keyword="searchKeyword" />
     </div>
 
     <!-- The Grok Times Overlay -->
