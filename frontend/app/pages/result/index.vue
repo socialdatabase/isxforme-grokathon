@@ -80,17 +80,17 @@
 
     <!-- Overview Tab Content (use v-show for preloading) -->
     <div v-show="activeTab === 'overview'" class="tab-content">
-      <ExampleOverview :keyword="searchKeyword" @switch-to-timeline="switchToTimeline" />
+      <ResultOverview :keyword="searchKeyword" @switch-to-timeline="switchToTimeline" />
     </div>
 
     <!-- Timeline Tab Content (use v-show for preloading) -->
     <div v-show="activeTab === 'timeline'" class="tab-content">
-      <ExampleTimeline :keyword="searchKeyword" @open-newspaper="openNewspaper" />
+      <ResultTimeline :keyword="searchKeyword" @open-newspaper="openNewspaper" />
     </div>
 
     <!-- Index Tab Content (use v-show for preloading) -->
     <div v-show="activeTab === 'index'" class="tab-content">
-      <ExampleIndex
+      <ResultIndex
         :keyword="searchKeyword"
         @select-account="handleAccountSelect"
       />
@@ -98,7 +98,7 @@
 
     <!-- Account Detail View -->
     <div v-if="activeTab === 'account' && selectedAccount" class="tab-content">
-      <ExampleAccountDetail
+      <ResultAccountDetail
         :account="selectedAccount"
         @back="backToIndex"
       />
@@ -106,12 +106,12 @@
 
     <!-- GrokSignal Tab Content (use v-show for preloading) -->
     <div v-show="activeTab === 'groksignal'" class="tab-content">
-      <ExampleGrokSignal :is-active="activeTab === 'groksignal'" :keyword="searchKeyword" @start-debate="switchToDebate" />
+      <ResultGrokSignal :is-active="activeTab === 'groksignal'" :keyword="searchKeyword" @start-debate="switchToDebate" />
     </div>
 
     <!-- Expert Debate Tab Content -->
     <div v-if="activeTab === 'debate'" class="tab-content">
-      <ExampleExpertDebate :is-active="activeTab === 'debate'" />
+      <ResultExpertDebate :is-active="activeTab === 'debate'" />
     </div>
 
     <!-- The Grok Times Overlay -->
@@ -129,6 +129,12 @@
 </template>
 
 <script setup lang="ts">
+import ResultAccountDetail from '~/components/ResultAccountDetail.vue'
+import ResultExpertDebate from '~/components/ResultExpertDebate.vue'
+import ResultGrokSignal from '~/components/ResultGrokSignal.vue'
+import ResultOverview from '~/components/ResultOverview.vue'
+import ResultTimeline from '~/components/ResultTimeline.vue'
+
 const route = useRoute()
 
 // Account type (must match ExampleIndex)
