@@ -16,10 +16,12 @@ from api.serializers import (
     InferTopicInQuerySerializer,
     FetchIdsHandleTopicsSerializer,
     FetchTopicsAndRanksIdsSerializer,
+    GetAccountsWithRanksSerializer,
     FetchTopicsRanksHandleSerializer,
     FetchExpertCategoriesSerializer,
     TextToSpeechSerializer,
     SpeechToTextSerializer,
+    FetchPostsTimelineSerializer,
 )
 from api.core import QueryFilter
 from api.groksignal import get_expert_category_perspective, get_expert_overview, get_followup_response, generate_ai_bio_handle
@@ -168,6 +170,21 @@ class GrokathonViewSet(viewsets.GenericViewSet):
         serializer.save()
         return Response(serializer.data)
 
+    @action(
+        detail=False,
+        methods=["get"],
+        serializer_class=FetchPostsTimelineSerializer,
+        filter_backends=[QueryFilter],
+        query_filters=["ids"],
+        url_path="fetch-posts-timeline",
+        url_name="fetch-posts-timeline",
+    )
+    def fetch_posts_timeline(self, request):
+        ids = request.GET.getlist("ids")
+        serializer = FetchPostsTimelineSerializer(data={"ids": ids})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
     @action(
         detail=False,
@@ -247,6 +264,22 @@ class GrokathonViewSet(viewsets.GenericViewSet):
         # To fetch the top topics (of ids) and the ranks of the ids
         ids = request.GET.getlist("ids")
         serializer = FetchTopicsAndRanksIdsSerializer(data={"ids": ids})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        serializer_class=GetAccountsWithRanksSerializer,
+        filter_backends=[QueryFilter],
+        query_filters=["input_query"],
+        url_path="get-accounts-with-ranks",
+        url_name="get-accounts-with-ranks",
+    )
+    def get_accounts_with_ranks(self, request):
+        input_query = request.GET.get("input_query")
+        serializer = GetAccountsWithRanksSerializer(data={"input_query": input_query})
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
