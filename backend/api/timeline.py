@@ -121,7 +121,9 @@ def fetch_grokathon_ids(input_query: str):
         "Content-Type": "application/json"
     }
     query_type = params.get("query_type") if params.get("query_type") else "interest"
-    search_instance = Search.objects.create(query=input_query, keywords=params.get("keywords"), countries=params.get("countries"), query_type=query_type)
+    keywords = ", ".join([keyword for keyword in params.get("keywords")]) if params.get("keywords") else ""
+    countries = ", ".join([country for country in params.get("countries")]) if params.get("countries") else ""
+    search_instance = Search.objects.create(query=input_query, keywords=keywords, countries=countries, query_type=query_type)
 
     resp = requests.get(url, headers=headers, params=params)
     resp.raise_for_status()
