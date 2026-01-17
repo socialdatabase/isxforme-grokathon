@@ -25,7 +25,7 @@ from api.serializers import (
     XaiVoicesSerializer,
 )
 from api.core import QueryFilter
-from api.groksignal import get_expert_category_perspective, get_expert_overview, get_followup_response, generate_ai_bio_handle, fetch_account_by_username
+from api.groksignal import get_expert_category_perspective, get_expert_overview, get_followup_response, generate_ai_bio_handle, fetch_account_by_username, get_expert_debate_response
 from api.newspaper import generate_newspaper_articles
 
 
@@ -583,6 +583,82 @@ class GrokathonViewSet(viewsets.GenericViewSet):
         )
         response['Cache-Control'] = 'no-cache'
         response['X-Accel-Buffering'] = 'no'  # Disable buffering in nginx
+        return response
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="stream-debate-response",
+        url_name="stream-debate-response",
+    )
+    def stream_debate_response(self, request):
+        """
+        Stream an expert's response in a debate context.
+        The expert responds based on their posts and what others have said.
+        
+        POST body (JSON):
+        - question: The debate question/topic
+        - expert_name: Display name of the expert
+        - expert_username: Username of the expert
+        - expert_role: Role/category (e.g., "F1 Driver")
+        - expert_posts: List of expert's posts [{text, like_count}]
+        - conversation_history: Previous responses [{speaker_name, speaker_role, text}]
+        - is_first_speaker: Boolean, whether this is the first speaker
+        
+        Returns a streaming text response.
+        """
+        data = request.data
+        question = data.get("question")
+        expert_name = data.get("expert_name")
+        expert_username = data.get("expert_username")
+        expert_role = data.get("expert_role")
+        expert_posts = data.get("expert_posts", [])
+        conversation_history = data.get("conversation_history", [])
+        is_first_speaker = data.get("is_first_speaker", False)
+        
+        if not question or not expert_name or not expert_username:
+            return Response(
+                {"error": "Missing required parameters: question, expert_name, expert_username"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        def stream_generator():
+            """Convert async generator to sync generator for StreamingHttpResponse"""
+            async def run_stream():
+                async for chunk in get_expert_debate_response(
+                    question=question,
+                    expert_name=expert_name,
+                    expert_username=expert_username,
+                    expert_role=expert_role or "Expert",
+                    expert_posts=expert_posts,
+                    conversation_history=conversation_history,
+                    is_first_speaker=is_first_speaker
+                ):
+                    yield chunk
+            
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            try:
+                async_gen = run_stream()
+                while True:
+                    try:
+                        chunk = loop.run_until_complete(async_gen.__anext__())
+                        if isinstance(chunk, str):
+                            yield chunk.encode('utf-8')
+                        else:
+                            yield chunk
+                    except StopAsyncIteration:
+                        break
+            finally:
+                loop.close()
+        
+        response = StreamingHttpResponse(
+            stream_generator(),
+            content_type='text/plain; charset=utf-8'
+        )
+        response['Cache-Control'] = 'no-cache'
+        response['X-Accel-Buffering'] = 'no'
         return response
 
     # ==================== xAI Voice API Endpoints ====================
