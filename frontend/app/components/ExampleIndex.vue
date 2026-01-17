@@ -4,7 +4,7 @@
     <div v-if="showResults || loading" class="results-container">
       <!-- Results Header -->
       <div class="results-header">
-        <h2 class="results-title text-red-500!">Authority Index</h2>
+        <h2 class="results-title">Authority Index</h2>
         <p class="results-subtitle">
           <template v-if="loading">
             Loading authorities in <span class="topic-highlight">{{ currentTopic }}</span>...
