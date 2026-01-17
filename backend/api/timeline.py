@@ -297,6 +297,30 @@ def fetch_posts(ids: list[str], n_per_account: int = 5, order_by: str = "created
     return posts
 
 
+def fetch_posts_timeline(ids: list[str], n_per_account: int = 5, order_by: str = "created_at"):
+    posts = fetch_posts(ids, n_per_account, order_by)
+    
+    if not posts:
+        return posts
+    
+    # Calculate median like count without numpy
+    like_counts = [post["post"].get("like_count", 0) for post in posts]
+    sorted_counts = sorted(like_counts)
+    n = len(sorted_counts)
+    if n == 0:
+        median_like_count = 0
+    elif n % 2 == 0:
+        median_like_count = (sorted_counts[n // 2 - 1] + sorted_counts[n // 2]) / 2
+    else:
+        median_like_count = sorted_counts[n // 2]
+    
+    # Filter posts to only include those with like_count > median
+    filtered_posts = [post for post in posts if post["post"].get("like_count", 0) > median_like_count]
+    
+    # If no posts pass the filter, return original posts
+    return filtered_posts if filtered_posts else posts
+
+
 def fetch_ids_handle_topics(handle: str, topics: list[str]):
     # To get ids outside of the community of the handle
     url = f"{BASE_URL_SDB}/api/external/bigdipper/fetch-ids-handles-topics/"
@@ -322,6 +346,15 @@ def fetch_topics_and_ranks_ids(ids: list[str]):
     topics = resp_data.get("topics", [])
     ranks = resp_data.get("accounts_ranks", [])
     return topics, ranks
+
+
+def get_accounts_with_ranks(input_query: str):
+    ids = fetch_grokathon_ids(input_query)
+    accounts = fetch_accounts(ids)
+    _, ranks = fetch_topics_and_ranks_ids(ids)
+    for account in accounts:
+        account["rank"] = ranks.get(account["id"], [])
+    return accounts
 
 
 def fetch_topics_ranks_handle(handle: str):
