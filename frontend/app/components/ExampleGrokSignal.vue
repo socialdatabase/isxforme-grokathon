@@ -37,7 +37,7 @@
             </svg>
           </button>
           <div v-if="sourcesOpen" class="accordion-content">
-            <div v-if="loadingPosts" class="entity-loading">
+            <div v-if="loadingPosts || loadingFilteredPosts" class="entity-loading">
               <div class="spinner-small"></div>
               <span>Loading posts...</span>
             </div>
@@ -194,10 +194,17 @@ const selectedExpertView = ref<string | null>(null)
 const loadingEntities = ref(true)
 const loadingCategories = ref(true)
 const loadingPosts = ref(true)
+const loadingFilteredPosts = ref(false)
 const totalEntitiesCount = ref(0)
 
 // Posts for "Content found on" section
-const contentPosts = ref<ContentPost[]>([])
+const allContentPosts = ref<ContentPost[]>([])
+const filteredContentPosts = ref<ContentPost[]>([])
+
+// Use filtered posts when a category is selected, otherwise all posts
+const contentPosts = computed(() => 
+  selectedExpertView.value ? filteredContentPosts.value : allContentPosts.value
+)
 
 // Store all fetched IDs (up to 100) for expert categories
 const allEntityIds = ref<string[]>([])
@@ -329,7 +336,7 @@ const fetchContentPosts = async (ids: string[]) => {
   if (ids.length === 0) return
   
   loadingPosts.value = true
-  contentPosts.value = []
+  allContentPosts.value = []
   
   try {
     // Take top 20 accounts to fetch posts from (20 posts per account = up to 400 posts)
@@ -342,7 +349,7 @@ const fetchContentPosts = async (ids: string[]) => {
     
     if (response.posts && response.posts.length > 0) {
       // Map to ContentPost format and take top 20 by likes
-      contentPosts.value = response.posts
+      allContentPosts.value = response.posts
         .map((item: ApiPost) => {
           // Extract first media photo if available
           let photo: string | null = null
@@ -386,7 +393,7 @@ const entitiesCountDisplay = computed(() => {
 
 // Computed display for content posts count
 const contentPostsCountDisplay = computed(() => {
-  if (loadingPosts.value) return 'Loading content...'
+  if (loadingPosts.value || loadingFilteredPosts.value) return 'Loading content...'
   if (contentPosts.value.length === 0) return 'Content found on:'
   return `Content found on: ${contentPosts.value.length} posts`
 })
@@ -570,12 +577,64 @@ const fetchCategoryAccounts = async (categoryName: string) => {
   }
 }
 
+// Fetch posts for a specific expert category
+const fetchCategoryPosts = async (categoryName: string) => {
+  const category = expertCategories.value.find((c: ExpertCategory) => c.name === categoryName)
+  if (!category || category.ids.length === 0) return
+
+  loadingFilteredPosts.value = true
+  filteredContentPosts.value = []
+
+  try {
+    // Fetch posts for up to 20 IDs from this category
+    const idsToFetch = category.ids.slice(0, 20)
+    const idsParams = idsToFetch.map((id: number) => `ids=${id}`).join('&')
+    
+    const response = await $fetch<{ posts: ApiPost[] }>(
+      `${config.public.apiBase}/grokathon/fetch-posts/?${idsParams}`
+    )
+
+    if (response.posts && response.posts.length > 0) {
+      // Map to ContentPost format and take top 20 by likes
+      filteredContentPosts.value = response.posts
+        .map((item: ApiPost) => {
+          let photo: string | null = null
+          if (item.post.media && item.post.media.length > 0) {
+            const firstMedia = item.post.media[0]
+            if (firstMedia.url) {
+              photo = firstMedia.url
+            } else if (firstMedia.preview_image_url) {
+              photo = firstMedia.preview_image_url
+            }
+          }
+          
+          return {
+            id: item.post.id,
+            text: item.post.text,
+            username: item.account.username,
+            avatar: item.account.profile_image_url || '',
+            likes: item.post.like_count || 0,
+            created_at: item.post.created_at,
+            photo
+          }
+        })
+        .sort((a: ContentPost, b: ContentPost) => b.likes - a.likes)
+        .slice(0, 20)
+    }
+  } catch (err) {
+    console.error('Error fetching category posts:', err)
+  } finally {
+    loadingFilteredPosts.value = false
+  }
+}
+
 const selectExpertView = async (category: string) => {
   if (selectedExpertView.value === category) {
-    // Deselect - go back to showing all entities
+    // Deselect - go back to showing all entities and posts
     selectedExpertView.value = null
     filteredEntityAccounts.value = []
     filteredEntitiesCount.value = 0
+    filteredContentPosts.value = []
     displayedResponse.value = ''
     typingIndex.value = 0
     isTyping.value = true
@@ -587,8 +646,11 @@ const selectExpertView = async (category: string) => {
     typingIndex.value = 0
     isTyping.value = true
     
-    // Fetch accounts for this category
-    await fetchCategoryAccounts(category)
+    // Fetch accounts and posts for this category in parallel
+    await Promise.all([
+      fetchCategoryAccounts(category),
+      fetchCategoryPosts(category)
+    ])
     
     setTimeout(() => typeExpertResponse(category), 300)
   }
