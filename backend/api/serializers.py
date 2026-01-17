@@ -79,6 +79,16 @@ class PostUrlSerializer(serializers.Serializer):
     display_url = serializers.CharField(allow_blank=True, allow_null=True)
 
 
+class MediaSerializer(serializers.Serializer):
+    url = serializers.URLField(allow_blank=True, allow_null=True, required=False)
+    type = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    width = serializers.IntegerField(allow_null=True, required=False)
+    height = serializers.IntegerField(allow_null=True, required=False)
+    preview_image_url = serializers.URLField(allow_blank=True, allow_null=True, required=False)
+    start = serializers.IntegerField(allow_null=True, required=False)
+    end = serializers.IntegerField(allow_null=True, required=False)
+
+
 class PostDataSerializer(serializers.Serializer):
     id = serializers.CharField()
     text = serializers.CharField()
@@ -92,7 +102,7 @@ class PostDataSerializer(serializers.Serializer):
     bookmark_count = serializers.IntegerField(required=False, allow_null=True)
     impression_count = serializers.IntegerField(required=False, allow_null=True)
     urls = PostUrlSerializer(many=True, required=False, allow_null=True)
-    media = serializers.ListField(required=False, allow_null=True, allow_empty=True)
+    media = MediaSerializer(many=True, required=False, allow_null=True, allow_empty=True)
 
 
 class PostAccountSerializer(serializers.Serializer):

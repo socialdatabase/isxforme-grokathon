@@ -165,11 +165,20 @@ def process_media_data(media_data: list[dict]):
             ]
         elif "url" in media:
             media_url = media.get("url")
+        else:
+            media_url = None
         media_key = media.get("media_key")
         media_type = media.get("type")
         media_width = media.get("width")
         media_height = media.get("height")
-        media_dict[media_key] = {"url": media_url, "type": media_type, "width": media_width, "height": media_height}
+        preview_image_url = media.get("preview_image_url")  # Thumbnail for videos
+        media_dict[media_key] = {
+            "url": media_url, 
+            "type": media_type, 
+            "width": media_width, 
+            "height": media_height,
+            "preview_image_url": preview_image_url
+        }
     return media_dict
 
 
