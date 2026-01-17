@@ -1,5 +1,5 @@
 <template>
-  <div class="container" @mousemove="handleMouseMove" @mouseleave="handleMouseLeave">
+  <div class="container-isxforme" @mousemove="handleMouseMove" @mouseleave="handleMouseLeave">
     <!-- Orbital Topics Background -->
     <div class="orbit-container" ref="orbitContainer">
       <div 
@@ -243,9 +243,9 @@ definePageMeta({
 </script>
 
 <style scoped>
-.container {
+.container-isxforme {
   min-height: 100vh;
-  min-width: 100vw;
+  min-width: full;
   background-color: #000;
   display: flex;
   flex-direction: column;
