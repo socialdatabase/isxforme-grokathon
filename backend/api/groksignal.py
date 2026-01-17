@@ -232,13 +232,13 @@ def extract_expert_categories(ids: list[str]):
                     # Try to map username to ID
                     mapped_id = username_to_id.get(id_or_username) or username_to_id.get(id_or_username.lower())
                     if mapped_id:
-                        mapped_ids.append(int(mapped_id) if isinstance(mapped_id, str) else mapped_id)
+                        mapped_ids.append(mapped_id if isinstance(mapped_id, str) else mapped_id)
                     else:
                         # If we can't map it, skip it (or log a warning)
                         continue
                 else:
                     # It's already an ID (numeric string or int)
-                    mapped_ids.append(int(id_or_username) if isinstance(id_or_username, str) else id_or_username)
+                    mapped_ids.append(id_or_username if isinstance(id_or_username, str) else id_or_username)
             categorized[category] = mapped_ids
         return categorized
     except json.JSONDecodeError:
