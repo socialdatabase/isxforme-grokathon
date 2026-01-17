@@ -706,7 +706,6 @@ class GrokathonViewSet(viewsets.GenericViewSet):
         response['Cache-Control'] = 'no-cache'
         response['X-Accel-Buffering'] = 'no'
         return response
->>>>>>> 40d7d89087a5fc3e488f5c0af9c22204a51fd1c6
 
     # ==================== xAI Voice API Endpoints ====================
     
