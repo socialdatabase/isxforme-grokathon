@@ -1,22 +1,22 @@
 export default defineAppConfig({
 ui: {
-    card: {
-      slots: {
-        header: 'p-4 sm:p-5',
-        body: 'p-4 sm:p-5',
-        footer: 'p-4 sm:p-5',
-      },
-      variants: {
-        variant: {
-          solid: {
-            root: 'text-card rounded-xl bg-card ring-card ring-1',
-          },
-          subtle: {
-            root: 'bg-elevated ring-1 ring-elevated',
-          },
-        },
-      },
-    },
+    // card: {
+    //   slots: {
+    //     header: 'p-4 sm:p-5',
+    //     body: 'p-4 sm:p-5',
+    //     footer: 'p-4 sm:p-5',
+    //   },
+    //   variants: {
+    //     variant: {
+    //       solid: {
+    //         root: 'text-card rounded-xl bg-card ring-card ring-1',
+    //       },
+    //       subtle: {
+    //         root: 'bg-elevated ring-1 ring-elevated',
+    //       },
+    //     },
+    //   },
+    // },
     // input: {
     //   slots: {
     //     base: 'rounded-full w-full h-14',
