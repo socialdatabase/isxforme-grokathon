@@ -113,8 +113,6 @@
 </template>
 
 <script setup lang="ts">
-import VisualHighlights from './VisualHighlights.vue';
-
 const config = useRuntimeConfig()
 
 const props = defineProps<{
