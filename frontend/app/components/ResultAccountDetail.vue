@@ -24,7 +24,7 @@
     <!-- Account Header with Bio -->
     <div class="account-header">
       <div class="account-avatar">
-        <img :src="account.avatar" :alt="account.displayName" />
+        <img :src="upgradeImg(account.avatar)" :alt="account.displayName" />
       </div>
       <div class="account-info">
         <div class="account-name-row">
@@ -172,6 +172,10 @@ const emit = defineEmits<{
   (e: 'back'): void
   (e: 'changeHandle', handle: string): void
 }>()
+
+const upgradeImg = (url: string) => {
+  return url.replace('_normal', '_400x400');
+}
 
 // State for handle input
 const handleInput = ref(`@${props.account.username}`)
