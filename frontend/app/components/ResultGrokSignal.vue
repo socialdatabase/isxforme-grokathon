@@ -3,7 +3,7 @@
     <div class="groksignal-layout">
       <!-- Chat Section -->
       <div class="groksignal-chat">
-        <!-- Entities Found -->
+        <!-- Experts Found -->
         <div class="grok-accordion">
           <button class="accordion-header" @click="toggleEntities">
             <span>{{ entitiesCountDisplay }}</span>
@@ -17,7 +17,7 @@
           <div v-if="entitiesOpen" class="accordion-content">
             <div v-if="loadingEntities || loadingFilteredEntities" class="entity-loading">
               <div class="spinner-small"></div>
-              <span>Loading...</span>
+              <span>Loading experts...</span>
             </div>
             <div v-else class="entity-list">
               <div v-for="account in entityAccounts" :key="account.username" class="entity-item">
@@ -64,8 +64,14 @@
 
         <!-- LLM Response -->
         <div class="grok-response">
+          <div v-if="loadingGrokResponse && !displayedResponse" class="response-loading">
+            <div class="spinner-small"></div>
+            <span>Analyzing expert views...</span>
+          </div>
+          <template v-else>
           <p v-html="displayedResponse"></p>
           <span v-if="isTyping" class="typing-cursor">|</span>
+          </template>
         </div>
 
         <!-- Follow-up Prompt -->
@@ -198,9 +204,17 @@ const totalEntitiesCount = ref(0)
 const loadingGrokResponse = ref(false)
 const grokResponseLoaded = ref(false)
 
+// Conversation history for follow-up questions
+interface ConversationMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+const conversationHistory = ref<ConversationMessage[]>([])
+
 // Computed for dynamic question based on topic and selected expert view
 const currentQuestion = computed(() => {
-  const topic = props.keyword || 'F1'
+  const topic = props.keyword
+  if (!topic) return 'Waiting for topic...'
   if (selectedExpertView.value) {
     return `What do ${selectedExpertView.value} think about ${topic}?`
   }
@@ -394,11 +408,11 @@ const fetchContentPosts = async (ids: string[]) => {
 
 // Computed display for entity count
 const entitiesCountDisplay = computed(() => {
-  if (loadingEntities.value || loadingFilteredEntities.value) return 'Loading entities...'
+  if (loadingEntities.value || loadingFilteredEntities.value) return 'Loading experts...'
   const count = displayedEntitiesCount.value
-  if (count === 0) return 'No entities found'
-  if (count >= 1000) return `${Math.floor(count / 1000)}K+ entities found...`
-  return `${count}+ entities found...`
+  if (count === 0) return 'No experts found'
+  if (count >= 1000) return `${Math.floor(count / 1000)}K+ experts found...`
+  return `${count}+ experts found...`
 })
 
 // Computed display for content posts count
@@ -422,12 +436,16 @@ const formatNumber = (num: number): string => {
 
 // Stream the initial Grok overview response
 const streamGrokOverview = async (ids: string[]) => {
-  if (ids.length === 0 || grokResponseLoaded.value) return
+  if (ids.length === 0 || grokResponseLoaded.value || !props.keyword) return
   
-  const keyword = props.keyword || 'F1'
+  const keyword = props.keyword
   loadingGrokResponse.value = true
   isTyping.value = true
   displayedResponse.value = ''
+  
+  // Reset conversation history for new topic
+  conversationHistory.value = []
+  const initialQuestion = `What are the latest expert views on ${keyword}?`
   
   try {
     const idsParams = ids.slice(0, 50).map((id: string) => `ids=${id}`).join('&')
@@ -454,6 +472,12 @@ const streamGrokOverview = async (ids: string[]) => {
       displayedResponse.value += chunk
     }
     
+    // Save to conversation history
+    conversationHistory.value = [
+      { role: 'user', content: initialQuestion },
+      { role: 'assistant', content: displayedResponse.value }
+    ]
+    
     grokResponseLoaded.value = true
   } catch (err) {
     console.error('Error streaming Grok overview:', err)
@@ -466,11 +490,15 @@ const streamGrokOverview = async (ids: string[]) => {
 
 // Stream the expert category perspective
 const streamExpertPerspective = async (category: string, ids: number[]) => {
-  if (ids.length === 0) return
+  if (ids.length === 0 || !props.keyword) return
   
-  const keyword = props.keyword || 'F1'
+  const keyword = props.keyword
   isTyping.value = true
   displayedResponse.value = ''
+  
+  // Reset conversation history for new expert category
+  conversationHistory.value = []
+  const initialQuestion = `What do ${category} think about ${keyword}?`
   
   try {
     const idsParams = ids.slice(0, 50).map((id: number) => `ids=${id}`).join('&')
@@ -496,6 +524,12 @@ const streamExpertPerspective = async (category: string, ids: number[]) => {
       const chunk = decoder.decode(value, { stream: true })
       displayedResponse.value += chunk
     }
+    
+    // Save to conversation history
+    conversationHistory.value = [
+      { role: 'user', content: initialQuestion },
+      { role: 'assistant', content: displayedResponse.value }
+    ]
   } catch (err) {
     console.error('Error streaming expert perspective:', err)
     displayedResponse.value = `Failed to load ${category} perspective. Please try again.`
@@ -627,10 +661,81 @@ const selectExpertView = async (category: string) => {
   }
 }
 
-const handleFollowup = () => {
-  if (grokFollowup.value.trim()) {
-    console.log('Follow-up question:', grokFollowup.value)
+const handleFollowup = async () => {
+  const question = grokFollowup.value.trim()
+  if (!question || !props.keyword) return
+  
+  // Get the IDs to use - either from selected category or all entities
+  let idsToUse: (string | number)[] = []
+  if (selectedExpertView.value) {
+    const selectedCategory = expertCategories.value.find((c: ExpertCategory) => c.name === selectedExpertView.value)
+    if (selectedCategory) {
+      idsToUse = selectedCategory.ids
+    }
+  } else {
+    idsToUse = allEntityIds.value
+  }
+  
+  if (idsToUse.length === 0) return
+  
+  // Add separator and the user's question to displayed response
+  displayedResponse.value += `<div class="followup-separator"></div><div class="followup-question">${question}</div><div class="followup-answer">`
+  
+  // Add to conversation history
+  conversationHistory.value.push({ role: 'user', content: question })
+  
+  // Clear input and show typing state
     grokFollowup.value = ''
+  isTyping.value = true
+  
+  try {
+    const response = await fetch(`${config.public.apiBase}/grokathon/stream-followup/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        followup_question: question,
+        conversation_history: conversationHistory.value.slice(0, -1), // Don't include the question we just added
+        input_query: props.keyword,
+        ids: idsToUse.slice(0, 50),
+        expert_category: selectedExpertView.value || null
+      })
+    })
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('No response body')
+    }
+    
+    const decoder = new TextDecoder()
+    let followupResponse = ''
+    
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      
+      const chunk = decoder.decode(value, { stream: true })
+      followupResponse += chunk
+      displayedResponse.value += chunk
+    }
+    
+    // Close the followup answer div
+    displayedResponse.value += '</div>'
+    
+    // Add the completed response to conversation history
+    conversationHistory.value.push({ role: 'assistant', content: followupResponse })
+  } catch (err) {
+    console.error('Error sending follow-up:', err)
+    displayedResponse.value += 'Failed to get response. Please try again.</div>'
+    // Remove the failed question from history
+    conversationHistory.value.pop()
+  } finally {
+    isTyping.value = false
   }
 }
 
@@ -647,7 +752,15 @@ watch(() => props.isActive, (active: boolean) => {
 
 // Watch for keyword changes - fetch entities even when not active (for pre-loading)
 watch(() => props.keyword, async (newKeyword: string | undefined) => {
-  const keyword = newKeyword || 'F1'
+  // Don't fetch if no keyword
+  if (!newKeyword) {
+    loadingEntities.value = false
+    loadingCategories.value = false
+    loadingPosts.value = false
+    return
+  }
+  
+  const keyword = newKeyword
   
   // Only fetch if keyword has changed
   if (keyword !== lastFetchedKeyword.value) {
@@ -786,6 +899,15 @@ watch(() => props.keyword, async (newKeyword: string | undefined) => {
   to {
     transform: rotate(360deg);
   }
+}
+
+.response-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #71767b;
+  font-size: 0.95rem;
+  padding: 1rem 0;
 }
 
 .entity-list {
@@ -1119,6 +1241,31 @@ watch(() => props.keyword, async (newKeyword: string | undefined) => {
 
 .grok-response :deep(.source-link:hover) {
   text-decoration: underline;
+}
+
+/* Follow-up styling */
+.grok-response :deep(.followup-separator) {
+  height: 1px;
+  background-color: #2f3336;
+  margin: 2rem 0;
+}
+
+.grok-response :deep(.followup-question) {
+  background-color: #16181c;
+  border: 1px solid #2f3336;
+  border-radius: 20px;
+  padding: 0.85rem 1.25rem;
+  color: #e7e9ea;
+  font-size: 0.95rem;
+  max-width: 80%;
+  margin-left: auto;
+  margin-bottom: 1.5rem;
+  float: right;
+  clear: both;
+}
+
+.grok-response :deep(.followup-answer) {
+  clear: both;
 }
 
 @media (max-width: 900px) {
