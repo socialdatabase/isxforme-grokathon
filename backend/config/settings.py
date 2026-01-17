@@ -187,4 +187,3 @@ CORS_ALLOW_CREDENTIALS = True
 SOCIAL_DATABASE_TOKEN = config('SOCIAL_DATABASE_TOKEN', default='')
 X_BEARER_TOKEN = config('X_BEARER_TOKEN', default='')
 XAI_TOKEN = config('XAI_TOKEN', default='')
-OPENAI_API_KEY = config('OPENAI_API_KEY', default='')

@@ -23,9 +23,9 @@
                 </svg>
                 <span class="tweet-handle">@{{ tweet.username }}</span>
                 <span class="tweet-dot">·</span>
-                <span class="tweet-date">{{ tweet.date }}</span>
+                <span class="tweet-date"><a target="_blank" :href="'https://www.x.com/i/status/' + tweet.id">{{ tweet.date }}</a></span>
               </div>
-            <p class="tweet-body">{{ tweet.text }}</p>
+            <p class="tweet-body">{{ formatText(tweet.text) }}</p>
             <div v-if="tweet.photo" class="tweet-media">
               <img :src="tweet.photo" alt="Tweet media" />
             </div>
@@ -206,30 +206,6 @@ const fallbackF1Tweets: TimelineTweet[] = [
 // Reactive authority accounts
 const whoToFollow = ref<AuthorityAccount[]>([])
 
-// Fallback F1 accounts
-const fallbackF1Accounts: AuthorityAccount[] = [
-  { displayName: 'Formula 1', username: 'F1', avatar: 'https://pbs.twimg.com/profile_images/1612433922733887489/7f5XFklA_normal.jpg', followers: '11.7M', verified: true },
-  { displayName: 'formularacers', username: 'formularacers_', avatar: 'https://pbs.twimg.com/profile_images/1430856837201637378/y8HLNdMx_normal.jpg', followers: '399K', verified: true },
-  { displayName: 'Lewis Hamilton', username: 'LewisHamilton', avatar: 'https://pbs.twimg.com/profile_images/1874472051517296640/anm3Q000_normal.jpg', followers: '8.4M', verified: true },
-  { displayName: 'Will Buxton', username: 'wbuxtonofficial', avatar: 'https://pbs.twimg.com/profile_images/1935077864577347584/EJo0lH27_normal.jpg', followers: '615K', verified: true },
-  { displayName: 'Scuderia Ferrari HP', username: 'ScuderiaFerrari', avatar: 'https://pbs.twimg.com/profile_images/947659786555940865/P5eYYYIx_normal.jpg', followers: '5.6M', verified: true },
-  { displayName: 'Matt Gallagher', username: 'MattP1Gallagher', avatar: 'https://pbs.twimg.com/profile_images/1893327368464334848/swYpqR8N_normal.jpg', followers: '931K', verified: true },
-  { displayName: 'McLaren', username: 'McLarenF1', avatar: 'https://pbs.twimg.com/profile_images/2009686309229441024/YAoyori-_normal.jpg', followers: '4.4M', verified: true },
-  { displayName: 'Oscar Piastri', username: 'OscarPiastri', avatar: 'https://pbs.twimg.com/profile_images/1841820044319248384/oPyapkyb_normal.jpg', followers: '1M', verified: true },
-  { displayName: 'Charles Leclerc', username: 'Charles_Leclerc', avatar: 'https://pbs.twimg.com/profile_images/1276567411240681472/8KdXHFdK_normal.jpg', followers: '3.6M', verified: true },
-  { displayName: 'ESPN F1', username: 'ESPNF1', avatar: 'https://pbs.twimg.com/profile_images/1632765606771425280/JamKD2T8_normal.jpg', followers: '1M', verified: true },
-  { displayName: 'Mercedes-AMG PETRONAS F1 Team', username: 'MercedesAMGF1', avatar: 'https://pbs.twimg.com/profile_images/2006665433651290112/bZZ9Ywke_normal.jpg', followers: '5.2M', verified: true },
-  { displayName: 'Zhou Guanyu', username: 'ZhouGuanyu24', avatar: 'https://pbs.twimg.com/profile_images/2008123397612384257/iIxGXK91_normal.jpg', followers: '580K', verified: true },
-  { displayName: 'Lando Norris', username: 'LandoNorris', avatar: 'https://pbs.twimg.com/profile_images/1752288661746454529/uAS75ARP_normal.jpg', followers: '2.9M', verified: true },
-  { displayName: 'Alex Albon', username: 'alex_albon', avatar: 'https://pbs.twimg.com/profile_images/1928007776447451137/suEzqXyT_normal.jpg', followers: '1.2M', verified: true },
-  { displayName: 'Oracle Red Bull Racing', username: 'redbullracing', avatar: 'https://pbs.twimg.com/profile_images/2006634351702810624/dl-eH03X_normal.jpg', followers: '4.8M', verified: true },
-  { displayName: 'Esteban Ocon', username: 'OconEsteban', avatar: 'https://pbs.twimg.com/profile_images/1422283976807526405/pMMvDhvl_normal.jpg', followers: '1M', verified: true },
-  { displayName: 'Max Verstappen', username: 'Max33Verstappen', avatar: 'https://pbs.twimg.com/profile_images/1759865143410765824/5B64vpgr_normal.jpg', followers: '4.1M', verified: true },
-  { displayName: 'Yuki Tsunoda', username: 'yukitsunoda07', avatar: 'https://pbs.twimg.com/profile_images/1678494543476322308/LYXk2Z3n_normal.jpg', followers: '820K', verified: true },
-  { displayName: 'Daniel Ricciardo', username: 'danielricciardo', avatar: 'https://pbs.twimg.com/profile_images/1595403026789023746/BhuqlZx8_normal.jpg', followers: '3.3M', verified: true },
-  { displayName: 'Formula 2', username: 'Formula2', avatar: 'https://pbs.twimg.com/profile_images/1567924548707704834/QV7x5eQF_normal.jpg', followers: '760K', verified: true },
-]
-
 // Fetch accounts from API
 const fetchAccounts = async (keyword: string) => {
   loading.value = true
@@ -296,6 +272,10 @@ const formatDate = (dateString: string): string => {
   }
 }
 
+const formatText = (text: string): string => {
+  return text.replace(/https:\/\/t\.co\/\w+/gi, '');
+}
+
 // Fetch posts from API
 const fetchPosts = async (keyword: string) => {
   loadingPosts.value = true
@@ -322,14 +302,14 @@ const fetchPosts = async (keyword: string) => {
 
     if (postsResponse.posts && postsResponse.posts.length > 0) {
       // Map API response to timeline tweet format
-      timelineTweets.value = postsResponse.posts.slice(0, 15).map((item: ApiPost) => {
+      timelineTweets.value = postsResponse.posts.slice(0, 150).map((item: ApiPost) => {
         // Extract first media photo if available
         let photo: string | null = null
         if (item.post.media && item.post.media.length > 0) {
           const firstMedia = item.post.media[0]
           if (firstMedia.url) {
             photo = firstMedia.url
-          } else if (firstMedia.preview_image_url) {
+          } if (firstMedia.preview_image_url) {
             photo = firstMedia.preview_image_url
           }
         }
@@ -579,16 +559,16 @@ watch(() => props.keyword, (newKeyword: string) => {
 
 .tweet-media {
   margin-bottom: 0.75rem;
-  border-radius: 16px;
   overflow: hidden;
-  border: 1px solid #2f3336;
 }
 
 .tweet-media img {
-  width: 100%;
-  max-height: 300px;
+  /* width: 100%; */
+  max-height: 600px;
   object-fit: cover;
   display: block;
+  border-radius: 16px;
+  border: 1px solid #2f3336;
 }
 
 .tweet-actions {

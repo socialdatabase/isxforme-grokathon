@@ -332,7 +332,7 @@ def text_to_speech(text: str):
     # Clean the text for better speech output
     cleaned_text = clean_text_for_speech(text)
 
-    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    client = OpenAI(api_key=settings.XAI_TOKEN)
 
     # Generate speech from cleaned text
     speech = client.audio.speech.create(
@@ -353,7 +353,7 @@ def speech_to_text(audio_file):
     Returns:
         str: Transcribed text
     """
-    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    client = OpenAI(api_key=settings.XAI_TOKEN)
 
     # Handle different input types and convert to bytes or BytesIO
     filename = "audio.mp3"
