@@ -36,7 +36,10 @@
           <p class="byline">By {{ articles[0].author }} | {{ articles[0].section }}</p>
           <div class="lead-layout">
             <div class="lead-image" v-if="articles[0].image">
-              <img :src="articles[0].image" :alt="articles[0].headline" @error="handleImageError($event, 0)" />
+              <video v-if="articles[0].video" :poster="articles[0].image" :src="articles[0].video" muted loop
+                @mouseenter="($event.target as HTMLVideoElement).play()"
+                @mouseleave="v => { (v.target as HTMLVideoElement).pause(); (v.target as HTMLVideoElement).currentTime = 0; }" />
+              <img v-else :src="articles[0].image" :alt="articles[0].headline" @error="handleImageError($event, 0)" />
               <p class="image-caption">{{ articles[0].imageCaption }}</p>
             </div>
             <div class="lead-text">
@@ -49,7 +52,10 @@
         <div class="stories-grid">
           <article v-for="(article, index) in articles.slice(1, 5)" :key="index" class="story-card">
             <div class="story-image" v-if="article.image">
-              <img :src="article.image" :alt="article.headline" @error="handleImageError($event, Number(index) + 1)" />
+              <video v-if="article.video" :poster="article.image" :src="article.video" muted loop
+                @mouseenter="($event.target as HTMLVideoElement).play()"
+                @mouseleave="v => { (v.target as HTMLVideoElement).pause(); (v.target as HTMLVideoElement).currentTime = 0; }" />
+              <img v-else :src="article.image" :alt="article.headline" @error="handleImageError($event, Number(index) + 1)" />
             </div>
             <h3 class="headline headline-secondary">{{ article.headline }}</h3>
             <p class="byline">{{ article.author }}</p>
@@ -91,6 +97,9 @@ interface Article {
   content: string
   image: string | null
   imageCaption: string
+  source_usernames?: string[]  // New optional field
+  video?: string | null  // New field for video URL
+  prompt_text?: string
 }
 
 interface ApiPost {
@@ -135,6 +144,27 @@ const currentDate = computed(() => {
 const handleImageError = (event: Event, index: number) => {
   const img = event.target as HTMLImageElement
   img.style.display = 'none'
+}
+
+// Changed: Made assignVideos async and use a sequential for-await loop to generate videos one by one
+const assignVideos = async () => {
+  for (const article of articles.value) {
+    if (article.image) {
+      try {
+        const res = await $fetch<{ video_url: string }>(
+          `${config.public.apiBase}/grokathon/xai-image-to-video/`,
+          {
+            method: 'POST',
+            body: { image_url: article.image, text: article.content || '' }
+          }
+        )
+        console.log(res.video_url)
+        article.video = res.video_url || null
+      } catch (e) {
+        console.error('Video generation error for image:', article.image, e)
+      }
+    }
+  }
 }
 
 const generateNewspaper = async (keyword: string) => {
@@ -186,7 +216,7 @@ const generateNewspaper = async (keyword: string) => {
 
     postCount.value = postsResponse.posts.length
 
-    // Collect images from posts
+    // Collect images from posts (flat list for fallback)
     for (const item of postsResponse.posts) {
       if (item.post?.media && item.post.media.length > 0) {
         for (const media of item.post.media) {
@@ -194,6 +224,31 @@ const generateNewspaper = async (keyword: string) => {
             const url = media.url || media.preview_image_url
             if (url && !collectedImages.value.includes(url)) {
               collectedImages.value.push(url)
+            }
+          }
+        }
+      }
+    }
+
+    // Collect images by username
+    const imagesByUsername: Record<string, string[]> = {}
+    for (const item of postsResponse.posts) {
+      const username = item.account.username
+      if (username) {
+        if (!imagesByUsername[username]) {
+          imagesByUsername[username] = []
+        }
+        if (item.post?.media && item.post.media.length > 0) {
+          for (const media of item.post.media) {
+            if (media.type !== 'video' && media.type !== 'animated_gif') {
+              const url = media.url || media.preview_image_url
+              if (url && !imagesByUsername[username].includes(url)) {
+                imagesByUsername[username].push(url)
+                // Still collect flat for fallback if not already added
+                if (!collectedImages.value.includes(url)) {
+                  collectedImages.value.push(url)
+                }
+              }
             }
           }
         }
@@ -229,12 +284,33 @@ const generateNewspaper = async (keyword: string) => {
       console.log('Grok response:', grokData)
       
       if (grokData.articles && grokData.articles.length > 0) {
-        // Assign collected images to articles
-        articles.value = grokData.articles.map((article: Article, index: number) => ({
-          ...article,
-          image: collectedImages.value[index] || null,
-          imageCaption: article.imageCaption || `Related to ${keyword}`
-        }))
+        // Assign collected images to articles, prioritizing source_usernames
+        articles.value = grokData.articles.map((article: Article, index: number) => {
+          let selectedImage: string | null = null
+          
+          // Prioritize image from source_usernames
+          if (article.source_usernames && article.source_usernames.length > 0) {
+            for (const user of article.source_usernames) {
+              const userImages = imagesByUsername[user]
+              if (userImages && userImages.length > 0) {
+                selectedImage = userImages[0] ?? null;  // Or Math.floor(Math.random() * userImages.length) for random
+                break
+              }
+            }
+          }
+          
+          // Fallback to sequential if no match
+          if (!selectedImage) {
+            selectedImage = collectedImages.value[index] || null
+          }
+          
+          return {
+            ...article,
+            image: selectedImage,
+            imageCaption: article.imageCaption || `Related to ${keyword}`
+          }
+        })
+        assignVideos()  // Start generating videos async
       } else {
         console.log('No articles returned, using fallback')
         generateFallbackArticles(postsResponse.posts, keyword)
@@ -287,19 +363,23 @@ const generateFallbackArticles = (posts: ApiPost[], keyword: string) => {
       section: index === 0 ? 'Top Story' : 'News',
       content: post.text || '',
       image: collectedImages.value[index] || null,
-      imageCaption: `Photo via @${account.username || 'unknown'}`
+      imageCaption: `Photo via @${account.username || 'unknown'}`,
+      source_usernames: [account.username || 'unknown']  // Added for consistency
     }
   })
 }
 
 watch(() => props.keyword, (newKeyword: string) => {
   if (newKeyword) {
+        console.log('generating keywords')
+
     generateNewspaper(newKeyword)
   }
-}, { immediate: true })
+}, { immediate: false })
 
 onMounted(() => {
   if (props.keyword) {
+    console.log('generating mounted')
     generateNewspaper(props.keyword)
   }
 })
@@ -557,8 +637,10 @@ onMounted(() => {
 
 /* Stories Grid */
 .stories-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  display: flex;
+  flex-direction: row;
+  /* display: grid;
+  grid-template-columns: repeat(4, 1fr); */
   gap: 1.5rem;
   border-bottom: 1px solid #ccc;
   padding-bottom: 2rem;
@@ -580,8 +662,8 @@ onMounted(() => {
 }
 
 .story-image img {
-  width: 100%;
-  height: 150px;
+  /* width: 100%; */
+  height: 300px;
   object-fit: cover;
   filter: grayscale(30%) contrast(1.1);
   border: 1px solid #ccc;
