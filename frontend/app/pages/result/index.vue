@@ -101,6 +101,7 @@
       <ResultAccountDetail
         :account="selectedAccount"
         @back="backToIndex"
+        @change-handle="handleChangeHandle"
       />
     </div>
 
@@ -135,6 +136,7 @@ import ResultGrokSignal from '~/components/ResultGrokSignal.vue'
 import ResultOverview from '~/components/ResultOverview.vue'
 import ResultTimeline from '~/components/ResultTimeline.vue'
 
+const config = useRuntimeConfig()
 const route = useRoute()
 
 // Account type (must match ExampleIndex)
@@ -242,6 +244,40 @@ const handleAccountSelect = (account: SelectedAccountData) => {
 const backToIndex = () => {
   activeTab.value = 'index'
   selectedAccount.value = null
+}
+
+const handleChangeHandle = async (newHandle: string) => {
+  try {
+    const response = await $fetch<{ account: any }>(
+      `${config.public.apiBase}/grokathon/fetch-account-handle/?handle=${encodeURIComponent(newHandle)}`
+    )
+    
+    if (response.account) {
+      const acc = response.account
+      selectedAccount.value = {
+        id: acc.id,
+        displayName: acc.name || acc.username,
+        username: acc.username,
+        avatar: acc.profile_image_url || '',
+        followers: formatFollowers(acc.public_metrics?.followers_count || 0),
+        following: formatFollowers(acc.public_metrics?.following_count || 0),
+        verified: acc.verified || false,
+        description: acc.description || ''
+      }
+    }
+  } catch (err) {
+    console.error('Error fetching account by handle:', err)
+  }
+}
+
+// Format followers count
+const formatFollowers = (count: number): string => {
+  if (count >= 1000000) {
+    return (count / 1000000).toFixed(1) + 'M'
+  } else if (count >= 1000) {
+    return (count / 1000).toFixed(1) + 'K'
+  }
+  return count.toString()
 }
 
 // Compute search bar width class based on active tab

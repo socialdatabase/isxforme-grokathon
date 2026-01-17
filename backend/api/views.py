@@ -22,7 +22,7 @@ from api.serializers import (
     SpeechToTextSerializer,
 )
 from api.core import QueryFilter
-from api.groksignal import get_expert_category_perspective, get_expert_overview, get_followup_response, generate_ai_bio_handle
+from api.groksignal import get_expert_category_perspective, get_expert_overview, get_followup_response, generate_ai_bio_handle, fetch_account_by_username
 from api.newspaper import generate_newspaper_articles
 
 
@@ -267,6 +267,26 @@ class GrokathonViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        filter_backends=[QueryFilter],
+        query_filters=["handle"],
+        url_path="fetch-account-handle",
+        url_name="fetch-account-handle",
+    )
+    def fetch_account_handle(self, request):
+        """Fetch account details by username/handle"""
+        handle = request.GET.get("handle")
+        if not handle:
+            return Response({"error": "handle parameter required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            account = fetch_account_by_username(handle)
+            return Response({"account": account})
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(
         detail=False,

@@ -2,22 +2,23 @@
   <div class="account-detail-container">
     <!-- Prompt Bar -->
     <div class="prompt-bar-container">
-      <div class="prompt-bar">
+      <form class="prompt-bar" @submit.prevent="handleHandleSubmit">
         <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
           <path d="M21 21L16.65 16.65M19 11C19 15.4183 15.4183 19 11 19C6.58172 19 3 15.4183 3 11C3 6.58172 6.58172 3 11 3C15.4183 3 19 6.58172 19 11Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         <input
-          :value="`@${account.username}`"
+          v-model="handleInput"
           type="text"
           class="prompt-input"
-          readonly
+          placeholder="@username"
+          @keydown.enter="handleHandleSubmit"
         />
         <button type="button" class="prompt-clear" @click="emit('back')">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
             <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
-      </div>
+      </form>
     </div>
 
     <!-- Account Header with Bio -->
@@ -85,7 +86,7 @@
       </div>
     </section>
 
-    <!-- AI Post Summary Section (Empty for now) -->
+    <!-- AI Post Summary Section -->
     <section class="detail-section">
       <div class="section-header">
         <svg class="section-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -94,10 +95,18 @@
           <path d="M16 13H8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           <path d="M16 17H8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        <h2 class="section-title">AI Post Summary</h2>
+        <h2 class="section-title">AI Summary</h2>
       </div>
-      <p class="ai-summary">
-        <!-- AI-generated summary will be populated later -->
+      
+      <!-- Loading State -->
+      <div v-if="loadingAiSummary && !aiSummary" class="loading-container">
+        <div class="spinner"></div>
+        <p class="loading-message">Generating AI summary...</p>
+      </div>
+      
+      <!-- AI Summary Content -->
+      <p v-else class="ai-summary">
+        {{ aiSummary }}<span v-if="loadingAiSummary" class="typing-cursor">|</span>
       </p>
     </section>
 
@@ -161,7 +170,11 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'back'): void
+  (e: 'changeHandle', handle: string): void
 }>()
+
+// State for handle input
+const handleInput = ref(`@${props.account.username}`)
 
 // State for fetched data
 const interests = ref<string[]>([])
@@ -169,23 +182,47 @@ const rankings = ref<Ranking[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
 
+// State for AI summary
+const aiSummary = ref('')
+const loadingAiSummary = ref(false)
+
+// Handle form submission for changing handle
+const handleHandleSubmit = () => {
+  const newHandle = handleInput.value.trim()
+  if (newHandle && newHandle !== `@${props.account.username}`) {
+    // Ensure it starts with @
+    const cleanHandle = newHandle.startsWith('@') ? newHandle : `@${newHandle}`
+    emit('changeHandle', cleanHandle)
+  }
+}
+
 // Fetch interests and rankings from API using handle
 const fetchAccountData = async () => {
   loading.value = true
   error.value = null
   
   try {
-    const response = await $fetch<{ topics: string[], ranks: number[] }>(
+    const response = await $fetch<{ topics: string[], ranks: string[] }>(
       `${config.public.apiBase}/grokathon/fetch-topics-ranks-handle/?handle=@${props.account.username}`
     )
     
-    if (response.topics && response.ranks) {
+    if (response.topics) {
       interests.value = response.topics
-      // Combine topics and ranks into ranking objects
-      rankings.value = response.topics.map((topic: string, index: number) => ({
-        category: topic,
-        rank: response.ranks[index] || 0
-      }))
+    }
+    
+    if (response.ranks) {
+      // Parse ranks from strings like "#1 - Robotics" into { rank: 1, category: "Robotics" }
+      rankings.value = response.ranks.map((rankStr: string) => {
+        // Handle formats like "#1 - Robotics" or "1 - Robotics"
+        const match = rankStr.match(/^#?(\d+)\s*-\s*(.+)$/)
+        if (match && match[1] && match[2]) {
+          return {
+            rank: parseInt(match[1], 10),
+            category: match[2].trim()
+          }
+        }
+        return null
+      }).filter((r: Ranking | null): r is Ranking => r !== null)
     }
   } catch (err) {
     console.error('Error fetching account data:', err)
@@ -195,21 +232,61 @@ const fetchAccountData = async () => {
   }
 }
 
+// Stream AI summary from the API
+const streamAiSummary = async () => {
+  loadingAiSummary.value = true
+  aiSummary.value = ''
+  
+  try {
+    const response = await fetch(
+      `${config.public.apiBase}/grokathon/generate-ai-bio-handle/?handle=@${props.account.username}`
+    )
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('No response body')
+    }
+    
+    const decoder = new TextDecoder()
+    
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      
+      const chunk = decoder.decode(value, { stream: true })
+      aiSummary.value += chunk
+    }
+  } catch (err) {
+    console.error('Error streaming AI summary:', err)
+    aiSummary.value = 'Failed to generate AI summary.'
+  } finally {
+    loadingAiSummary.value = false
+  }
+}
+
 // Get CSS class based on rank
 const getRankClass = (rank: number) => {
-  if (rank === 1) return 'rank-gold'
-  if (rank <= 10) return 'rank-silver'
+  if (rank <= 3) return 'rank-gold'
+  if (rank <= 25) return 'rank-silver'
+  if (rank <= 100) return 'rank-bronze'
   return 'rank-default'
 }
 
 // Fetch data when component mounts
 onMounted(() => {
   fetchAccountData()
+  streamAiSummary()
 })
 
 // Re-fetch if account changes
-watch(() => props.account.username, () => {
+watch(() => props.account.username, (newUsername: string) => {
+  handleInput.value = `@${newUsername}`
   fetchAccountData()
+  streamAiSummary()
 })
 </script>
 
@@ -411,26 +488,26 @@ watch(() => props.account.username, () => {
 /* Rankings Grid */
 .rankings-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.75rem;
 }
 
 .ranking-card {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
   background-color: #2f3336;
-  border-radius: 12px;
-  padding: 1rem;
-  transition: all 0.15s ease;
+  border-radius: 8px;
+  padding: 0.65rem 0.9rem;
+  transition: background-color 0.15s ease;
 }
 
 .ranking-card:hover {
-  background-color: #3f4347;
+  background-color: #3a3d41;
 }
 
 .ranking-number {
-  font-size: 1.1rem;
+  font-size: 0.95rem;
   font-weight: 700;
   color: #e7e9ea;
 }
@@ -441,30 +518,42 @@ watch(() => props.account.username, () => {
 }
 
 .ranking-category {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: #1d9bf0;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #e7e9ea;
 }
 
-/* Rank Colors */
+/* Top 3 - Gold background */
 .ranking-card.rank-gold {
-  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  background-color: #a08520;
+}
+
+.ranking-card.rank-gold:hover {
+  background-color: #b8992a;
 }
 
 .ranking-card.rank-gold .ranking-number,
 .ranking-card.rank-gold .ranking-label,
 .ranking-card.rank-gold .ranking-category {
-  color: #000;
+  color: #fff;
 }
 
+/* Top 25 */
 .ranking-card.rank-silver {
-  background: linear-gradient(135deg, #C0C0C0 0%, #A8A8A8 100%);
+  background-color: #404550;
 }
 
-.ranking-card.rank-silver .ranking-number,
-.ranking-card.rank-silver .ranking-label,
-.ranking-card.rank-silver .ranking-category {
-  color: #000;
+.ranking-card.rank-silver:hover {
+  background-color: #4a5060;
+}
+
+/* Top 100 */
+.ranking-card.rank-bronze {
+  background-color: #353840;
+}
+
+.ranking-card.rank-bronze:hover {
+  background-color: #3f434c;
 }
 
 /* AI Summary */
@@ -474,6 +563,18 @@ watch(() => props.account.username, () => {
   line-height: 1.6;
   margin: 0;
   min-height: 60px;
+}
+
+.typing-cursor {
+  display: inline-block;
+  color: #1d9bf0;
+  animation: blink 0.8s infinite;
+  margin-left: 2px;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
 }
 
 /* Interests Grid */
