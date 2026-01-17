@@ -4,14 +4,19 @@ import time
 
 # image_url = "https://media.formula1.com/image/upload/c_lfill,w_3392/q_auto/v1740000000/fom-website/2025/Miscellaneous/2025-start-barcelona.webp"
 
-def generate_video_from_image(image_url: str):
+def generate_video_from_image(image_url: str, text: str):
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {settings.XAI_TOKEN}"
     }
 
+    prompt = (
+        f"Create a short video from this X post image. "
+        f"Use the post text to guide the animation and bring the scene to life: {text}"
+    )
+
     data = {
-        "prompt": "Make the formula1 cars drive very fast on the track",
+        "prompt": prompt,
         "model": "grok-imagine-video-beta",
         "image": {
             "url": image_url
@@ -53,6 +58,6 @@ def fetch_video_from_request_id(request_id: str, max_sleep_time: int = 30):
     return result.get("url", result)
 
 
-def fetch_video_from_image(image_url: str):
-    request_id = generate_video_from_image(image_url)
+def fetch_video_from_image(image_url: str, text: str):
+    request_id = generate_video_from_image(image_url, text)
     return fetch_video_from_request_id(request_id)
