@@ -1,5 +1,14 @@
 export default defineNuxtConfig({
   devtools: { enabled: true },
+
+  vite: {
+    server: {
+      watch: {
+        usePolling: true,
+        interval: 500,  // Optional: Adjust poll frequency in ms (default is 1000; lower = more responsive but higher CPU)
+      },
+    },
+  },
   
   ssr: false, // SPA mode for simplicity with API backend
   
