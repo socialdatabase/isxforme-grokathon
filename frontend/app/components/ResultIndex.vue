@@ -5,14 +5,24 @@
       <!-- Results Header -->
       <div class="results-header">
         <h2 class="results-title">Authority Index</h2>
-        <p class="results-subtitle">
-          <template v-if="loading">
-            Loading authorities in <span class="topic-highlight">{{ currentTopic }}</span>...
-          </template>
-          <template v-else>
-            Top {{ authorityAccounts.length }} authorities in <span class="topic-highlight">{{ currentTopic }}</span>
-          </template>
-        </p>
+        
+        <!-- Toggle between Top Community and Categories -->
+        <div class="view-toggle">
+          <button 
+            class="toggle-btn" 
+            :class="{ active: viewMode === 'community' }"
+            @click="viewMode = 'community'"
+          >
+            Top Community
+          </button>
+          <button 
+            class="toggle-btn" 
+            :class="{ active: viewMode === 'categories' }"
+            @click="viewMode = 'categories'"
+          >
+            Categories
+          </button>
+        </div>
       </div>
 
       <!-- Loading Spinner -->
@@ -21,55 +31,51 @@
         <p class="loading-message">Fetching authority rankings...</p>
       </div>
 
-      <!-- Authority Index Grid -->
-      <div v-else class="authority-grid">
-        <div 
-          v-for="(account, index) in authorityAccounts" 
-          :key="account.username" 
-          class="authority-card"
-          @click="emit('select-account', account)"
-        >
-          <!-- Account Info Row -->
-          <div class="account-row">
-            <div class="account-avatar">
-              <img :src="account.avatar" :alt="account.displayName" />
-            </div>
-            <div class="account-details">
-              <div class="account-name-row">
-                <span class="account-name">{{ account.displayName }}</span>
-                <svg v-if="account.verified" class="verified-badge" width="16" height="16" viewBox="0 0 24 24" fill="#1d9bf0">
-                  <path d="M22.5 12.5c0-1.58-.875-2.95-2.148-3.6.154-.435.238-.905.238-1.4 0-2.21-1.71-3.998-3.818-3.998-.47 0-.92.084-1.336.25C14.818 2.415 13.51 1.5 12 1.5s-2.816.917-3.437 2.25c-.415-.165-.866-.25-1.336-.25-2.11 0-3.818 1.79-3.818 4 0 .494.083.964.237 1.4-1.272.65-2.147 2.018-2.147 3.6 0 1.495.782 2.798 1.942 3.486-.02.17-.032.34-.032.514 0 2.21 1.708 4 3.818 4 .47 0 .92-.086 1.335-.25.62 1.334 1.926 2.25 3.437 2.25 1.512 0 2.818-.916 3.437-2.25.415.163.865.248 1.336.248 2.11 0 3.818-1.79 3.818-4 0-.174-.012-.344-.033-.513 1.158-.687 1.943-1.99 1.943-3.484zm-6.616-3.334l-4.334 6.5c-.145.217-.382.334-.625.334-.143 0-.288-.04-.416-.126l-.115-.094-2.415-2.415c-.293-.293-.293-.768 0-1.06s.768-.294 1.06 0l1.77 1.767 3.825-5.74c.23-.345.696-.436 1.04-.207.346.23.44.696.21 1.04z"/>
-                </svg>
+      <!-- Top Community View -->
+      <template v-else-if="viewMode === 'community'">
+        <p class="results-subtitle">
+          Top {{ authorityAccounts.length }} authorities in <span class="topic-highlight">{{ currentTopic }}</span>
+        </p>
+        
+        <!-- Authority Index Grid -->
+        <div class="authority-grid">
+          <div 
+            v-for="(account, index) in authorityAccounts" 
+            :key="account.username" 
+            class="authority-card"
+            @click="emit('select-account', account)"
+          >
+            <!-- Account Info Row -->
+            <div class="account-row">
+              <div class="account-avatar">
+                <img :src="account.avatar" :alt="account.displayName" />
               </div>
-              <div class="account-handle">@{{ account.username }}</div>
-              <div class="account-followers">{{ account.followers }} followers</div>
-            </div>
-            
-            <!-- Rank Badge -->
-            <div class="rank-badge" :class="getRankClass(index)">
-              <span class="rank-number">#{{ Number(index) + 1 }}</span>
-              <span class="rank-in">in</span>
-              <span class="rank-topic">{{ currentTopic }}</span>
+              <div class="account-details">
+                <div class="account-name-row">
+                  <span class="account-name">{{ account.displayName }}</span>
+                  <svg v-if="account.verified" class="verified-badge" width="16" height="16" viewBox="0 0 24 24" fill="#1d9bf0">
+                    <path d="M22.5 12.5c0-1.58-.875-2.95-2.148-3.6.154-.435.238-.905.238-1.4 0-2.21-1.71-3.998-3.818-3.998-.47 0-.92.084-1.336.25C14.818 2.415 13.51 1.5 12 1.5s-2.816.917-3.437 2.25c-.415-.165-.866-.25-1.336-.25-2.11 0-3.818 1.79-3.818 4 0 .494.083.964.237 1.4-1.272.65-2.147 2.018-2.147 3.6 0 1.495.782 2.798 1.942 3.486-.02.17-.032.34-.032.514 0 2.21 1.708 4 3.818 4 .47 0 .92-.086 1.335-.25.62 1.334 1.926 2.25 3.437 2.25 1.512 0 2.818-.916 3.437-2.25.415.163.865.248 1.336.248 2.11 0 3.818-1.79 3.818-4 0-.174-.012-.344-.033-.513 1.158-.687 1.943-1.99 1.943-3.484zm-6.616-3.334l-4.334 6.5c-.145.217-.382.334-.625.334-.143 0-.288-.04-.416-.126l-.115-.094-2.415-2.415c-.293-.293-.293-.768 0-1.06s.768-.294 1.06 0l1.77 1.767 3.825-5.74c.23-.345.696-.436 1.04-.207.346.23.44.696.21 1.04z"/>
+                  </svg>
+                </div>
+                <div class="account-handle">@{{ account.username }}</div>
+                <div class="account-followers">{{ account.followers }} followers</div>
+              </div>
+              
+              <!-- Rank Badge -->
+              <div class="rank-badge" :class="getRankClass(index)">
+                <span class="rank-number">#{{ Number(index) + 1 }}</span>
+                <span class="rank-in">in</span>
+                <span class="rank-topic">{{ currentTopic }}</span>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </template>
 
-      <!-- Category Buttons (below results) -->
-      <div class="category-section">
-        <h3 class="category-section-title">Explore Other Categories</h3>
-        <div class="category-grid">
-          <button
-            v-for="category in categories"
-            :key="category"
-            class="category-btn"
-            :class="{ selected: selectedCategory === category }"
-            @click="selectCategory(category)"
-          >
-            {{ category }}
-          </button>
-        </div>
-      </div>
+      <!-- Categories View -->
+      <template v-else-if="viewMode === 'categories'">
+        <ResultIndexCategories />
+      </template>
     </div>
 
     <!-- Browse Categories (when no results) -->
@@ -81,17 +87,7 @@
       </div>
 
       <!-- Category Grid -->
-      <div class="category-grid">
-        <button
-          v-for="category in categories"
-          :key="category"
-          class="category-btn"
-          :class="{ selected: selectedCategory === category }"
-          @click="selectCategory(category)"
-        >
-          {{ category }}
-        </button>
-      </div>
+      <ResultIndexCategories />
     </template>
   </div>
 </template>
@@ -137,37 +133,7 @@ const selectedCategory = ref<string | null>(null)
 const showResults = ref(false)
 const currentTopic = ref('F1')
 const loading = ref(false)
-
-const categories = [
-  'Aerospace',
-  'Agriculture',
-  'Animals',
-  'Automotive',
-  'Business',
-  'Companies',
-  'Culture',
-  'Education',
-  'Energy',
-  'Entertainment',
-  'Environment & Sustainability',
-  'Financial',
-  'Food/Beverages',
-  'Healthcare',
-  'Home & Garden',
-  'IT/Tech',
-  'Lifestage',
-  'Lifestyle',
-  'Locations',
-  'Media',
-  'Non Profit',
-  'Politics',
-  'Recreational Activities',
-  'Religion',
-  'Science',
-  'Service',
-  'Sports',
-  'Adult / 18+',
-]
+const viewMode = ref<'community' | 'categories'>('community')
 
 // Reactive accounts data
 const authorityAccounts = ref<AuthorityAccount[]>([])
@@ -334,19 +300,51 @@ const getRankClass = (index: number) => {
 /* Results Header */
 .results-header {
   text-align: center;
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
 }
 
 .results-title {
   font-size: 1.75rem;
   font-weight: 700;
   color: #e7e9ea;
-  margin-bottom: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+/* View Toggle */
+.view-toggle {
+  display: inline-flex;
+  background-color: #16181c;
+  border-radius: 20px;
+  padding: 4px;
+  gap: 4px;
+}
+
+.toggle-btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  background: transparent;
+  color: #71767b;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.toggle-btn:hover {
+  color: #e7e9ea;
+}
+
+.toggle-btn.active {
+  background-color: #1d9bf0;
+  color: #fff;
 }
 
 .results-subtitle {
   font-size: 1rem;
   color: #71767b;
+  margin-top: 1rem;
 }
 
 .topic-highlight {
@@ -516,21 +514,6 @@ const getRankClass = (index: number) => {
   font-size: 0.8rem;
 }
 
-/* Category Section (below results) */
-.category-section {
-  margin-top: 3rem;
-  padding-top: 2rem;
-  border-top: 1px solid #2f3336;
-}
-
-.category-section-title {
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: #71767b;
-  margin-bottom: 1.25rem;
-  text-align: center;
-}
-
 /* Category Header */
 .category-header {
   text-align: center;
@@ -549,57 +532,14 @@ const getRankClass = (index: number) => {
   color: #71767b;
 }
 
-/* Category Grid */
-.category-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1rem;
-}
-
-.category-btn {
-  background-color: transparent;
-  border: 1px solid #2f3336;
-  border-radius: 12px;
-  padding: 1rem 1.25rem;
-  color: #e7e9ea;
-  font-size: 0.95rem;
-  font-family: inherit;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  text-align: center;
-}
-
-.category-btn:hover {
-  background-color: #16181c;
-  border-color: #3f4347;
-}
-
-.category-btn.selected {
-  background-color: #16181c;
-  border-color: #fff;
-}
-
 /* Responsive */
 @media (max-width: 900px) {
   .authority-grid {
     grid-template-columns: 1fr;
   }
-  
-  .category-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
 }
 
 @media (max-width: 600px) {
-  .category-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  .category-btn {
-    padding: 0.85rem 1rem;
-    font-size: 0.9rem;
-  }
-  
   .account-avatar {
     width: 40px;
     height: 40px;

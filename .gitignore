@@ -59,3 +59,7 @@ Thumbs.db
 # Vue
 /frontend/dist
 
+# Large data files
+classifiers.json
+# Large data files
+classifiers.json
