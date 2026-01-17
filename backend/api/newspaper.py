@@ -19,7 +19,8 @@ def generate_newspaper_articles(keyword: str, posts: list[dict]):
                     "author": "...",
                     "section": "...",
                     "content": "...",
-                    "imageCaption": "..."
+                    "imageCaption": "...",
+                    "source_usernames": ["user1", "user2"]
                 },
                 ...
             ]
@@ -56,6 +57,7 @@ INSTRUCTIONS:
 5. Each article should synthesize information from multiple posts when relevant
 6. Create dramatic but accurate headlines (like NYT meets Daily Prophet)
 7. Attribute quotes and information to the original posters
+8. For each article, list the source_usernames: the usernames (without the @ symbol) of the primary posters whose posts were used to generate this article
 
 For each article provide:
 - headline: A compelling newspaper headline (dramatic but factual)
@@ -63,6 +65,7 @@ For each article provide:
 - section: The newspaper section (e.g., "Front Page", "Sports", "Technology", "Opinion", "Breaking News")
 - content: The article text (2-4 paragraphs, proper newspaper style)
 - imageCaption: A caption for an accompanying image
+- source_usernames: Array of usernames (without @) of the main sources used
 
 Return ONLY a valid JSON object with this structure:
 {{
@@ -72,7 +75,8 @@ Return ONLY a valid JSON object with this structure:
             "author": "string", 
             "section": "string",
             "content": "string",
-            "imageCaption": "string"
+            "imageCaption": "string",
+            "source_usernames": ["string", "string"]
         }}
     ]
 }}"""
