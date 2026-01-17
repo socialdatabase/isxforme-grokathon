@@ -61,5 +61,6 @@ Thumbs.db
 
 # Large data files
 classifiers.json
-# Large data files
-classifiers.json
+
+# Documentation PDFs
+*.pdf
