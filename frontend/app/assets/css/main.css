@@ -1,6 +1,42 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
+@theme {
+  /* custom colors - theme */
+  --background-color-card: var(--ui-bg-card);
+  --text-color-card: var(--ui-text-card);
+  --border-color-card: var(--ui-border-card);
+  --ring-color-card: var(--ui-border-card);
+
+  --text-color-accented: var(--ui-text-accented);
+  --ring-color-accented: var(--ui-text-accented);
+
+}
+
+:root {
+  --ui-bg: black;
+  --ui-text: hsl(200, 7%, 91%);
+
+  /* card */
+  --ui-bg-card: hsl(220, 12%, 10%);
+  --ui-text-card: white;
+  --ui-border-card: hsl(206, 7%, 20%);
+
+  /* dimmed */
+  --ui-text-dimmed: hsl(210, 4%, 46%);
+
+  --ui-text-accented: hsl(204, 88%, 53%);
+}
+
+@utility scrollbar-none {
+  @apply [scrollbar-width:none] [&::-webkit-scrollbar]:hidden;
+}
+
+@utility bg-blur {
+    mask: linear-gradient(black, black, black, black, transparent);
+    backdrop-filter: blur(12px)
+}
+
 * {
   margin: 0;
   padding: 0;

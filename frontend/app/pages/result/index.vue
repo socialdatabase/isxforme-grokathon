@@ -1,5 +1,5 @@
 <template>
-  <div class="container">
+  <div class="container-isxforme">
     <!-- Hero Section / Toggle -->
     <header class="hero" :class="{ collapsed: showTabs }" @click="collapseHero">
       <transition name="fade" mode="out-in">
@@ -7,76 +7,45 @@
           <h1 class="hero-title">𝕏 is definitely for you!</h1>
           <p class="hero-subtitle">We found an amazing community that matches your interests</p>
         </div>
-        <div v-else key="tabs" class="tabs-container">
-          <button 
-            class="tab" 
-            :class="{ active: activeTab === 'overview' }"
-            @click.stop="activeTab = 'overview'"
-          >
-            Overview
-          </button>
-          <button 
-            class="tab" 
-            :class="{ active: activeTab === 'timeline' }"
-            @click.stop="activeTab = 'timeline'"
-          >
-            Timeline
-          </button>
-          <button 
-            class="tab groksignal" 
-            :class="{ active: activeTab === 'groksignal' }"
-            @click.stop="activeTab = 'groksignal'"
-          >
-            GrokSignal
-          </button>
-          <button 
-            class="tab" 
-            :class="{ active: activeTab === 'index' }"
-            @click.stop="activeTab = 'index'"
-          >
-            Index
-          </button>
+        <div v-else key="tabs" class="search-bar-container" :class="searchBarWidthClass">
+          <div class="search-bar-row">
+            <form class="search-bar" @submit.prevent="handleSearch">
+              <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M21 21L16.65 16.65M19 11C19 15.4183 15.4183 19 11 19C6.58172 19 3 15.4183 3 11C3 6.58172 6.58172 3 11 3C15.4183 3 19 6.58172 19 11Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <input
+                v-model="searchInput"
+                type="text"
+                class="search-input"
+                placeholder="Search for a topic or @handle..."
+              />
+              <button type="submit" class="search-submit" :disabled="!searchInput.trim()">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                  <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </form>
+          
+            <!-- Podcast Mode Button (Timeline only) -->
+            <button 
+              v-if="activeTab === 'timeline'"
+              class="podcast-btn"
+              :class="{ active: podcastMode }"
+              @click="podcastMode = !podcastMode"
+            >
+              <span class="podcast-label hidden sm:flex">{{ podcastMode ? 'Playing' : 'Podcast' }}</span>
+              <div class="sound-waves" :class="{ playing: podcastMode }">
+                <span class="wave"></span>
+                <span class="wave"></span>
+                <span class="wave"></span>
+                <span class="wave"></span>
+              </div>
+            </button>
+          </div>
+          <BaseTabs v-model="activeTab" />
         </div>
       </transition>
     </header>
-
-    <!-- Unified Search Bar -->
-    <div v-if="showTabs" class="search-bar-container" :class="searchBarWidthClass">
-      <div class="search-bar-row">
-        <form class="search-bar" @submit.prevent="handleSearch">
-          <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
-            <path d="M21 21L16.65 16.65M19 11C19 15.4183 15.4183 19 11 19C6.58172 19 3 15.4183 3 11C3 6.58172 6.58172 3 11 3C15.4183 3 19 6.58172 19 11Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          <input
-            v-model="searchInput"
-            type="text"
-            class="search-input"
-            placeholder="Search for a topic or @handle..."
-          />
-          <button type="submit" class="search-submit" :disabled="!searchInput.trim()">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </button>
-        </form>
-        
-        <!-- Podcast Mode Button (Timeline only) -->
-        <button 
-          v-if="activeTab === 'timeline'"
-          class="podcast-btn"
-          :class="{ active: podcastMode }"
-          @click="podcastMode = !podcastMode"
-        >
-          <span class="podcast-label">{{ podcastMode ? 'Playing' : 'Podcast' }}</span>
-          <div class="sound-waves" :class="{ playing: podcastMode }">
-            <span class="wave"></span>
-            <span class="wave"></span>
-            <span class="wave"></span>
-            <span class="wave"></span>
-          </div>
-        </button>
-      </div>
-    </div>
 
     <!-- Overview Tab Content (use v-show for preloading) -->
     <div v-show="activeTab === 'overview'" class="tab-content">
@@ -328,8 +297,8 @@ definePageMeta({
 </script>
 
 <style scoped>
-.container {
-  min-width: 100vw;
+.container-isxforme {
+  /* width: full; */
   min-height: 100vh;
   background-color: #000;
   padding: 3rem 1.5rem;
@@ -408,8 +377,11 @@ definePageMeta({
 /* Unified Search Bar */
 .search-bar-container {
   margin: 0 auto 2rem;
+  max-width: 1000px;
   transition: max-width 0.3s ease;
 }
+
+
 
 .search-bar-container.width-800 {
   max-width: 800px;
@@ -426,6 +398,7 @@ definePageMeta({
 .search-bar-row {
   display: flex;
   gap: 0.75rem;
+  margin-bottom: 20px;
   align-items: stretch;
 }
 
@@ -641,7 +614,7 @@ definePageMeta({
 
 /* Responsive */
 @media (max-width: 600px) {
-  .container {
+  .container-isxforme {
     padding: 2rem 1rem;
   }
   
