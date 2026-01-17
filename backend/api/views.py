@@ -152,7 +152,8 @@ class GrokathonViewSet(viewsets.GenericViewSet):
     )
     def xai_image_to_video(self, request):
         image_url = request.data.get("image_url")
-        serializer = XaiImageToVideoSerializer(data={"image_url": image_url})
+        text = request.data.get("text")
+        serializer = XaiImageToVideoSerializer(data={"image_url": image_url, "text": text})
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
