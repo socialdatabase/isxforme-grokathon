@@ -325,15 +325,19 @@ Your task is to provide a comprehensive, well-structured response that:
 1. Opens with a brief overview of the current state of discussions around "{input_query}"
 2. Identifies and explains the key themes, trends, and talking points
 3. Highlights notable insights, opinions, and developments from the experts
-4. Provides specific examples and references to posts where relevant (mention usernames with @ prefix)
+4. References specific experts using @username format inline in your text
 5. Organizes the information into clear sections with <h4> headings
-6. Uses <strong> tags to emphasize key terms, names, and important points
+6. Uses <strong> tags to emphasize key terms and important points
 7. Uses <ul> and <li> tags for lists where appropriate
-8. Includes <blockquote> tags for notable quotes from the posts, with source links like: <a href="https://x.com/username" class="source-link">@username</a>
 
-Write in a clear, engaging, and informative style. The response should be comprehensive (aim for 4-6 paragraphs/sections) but focused on what's most relevant and interesting.
+IMPORTANT formatting rules:
+- Keep any direct quotes SHORT (max 1-2 sentences). Paraphrase longer content.
+- Reference experts inline like: According to <strong>@username</strong>, ...
+- Do NOT use <blockquote> tags
+- Do NOT include markdown or code fences
+- Write clean, properly nested HTML
 
-Important: Do NOT include any markdown code fences or JSON formatting. Write the response directly as HTML-formatted text."""
+Write in a clear, engaging, and informative style. The response should be comprehensive (aim for 4-6 paragraphs/sections) but focused on what's most relevant and interesting."""
 
     messages = [{"role": "user", "content": prompt}]
     
@@ -398,11 +402,12 @@ You have access to recent posts from relevant experts on this topic:
 
 When answering follow-up questions:
 1. Continue the conversation naturally, building on previous responses
-2. Reference specific posts and experts when relevant (use @username format)
+2. Reference specific experts inline using <strong>@username</strong> format
 3. Use HTML formatting: <strong> for emphasis, <h4> for section headings if needed, <ul>/<li> for lists
-4. Include <blockquote> tags for notable quotes with source links
+4. Keep any direct quotes SHORT (max 1-2 sentences). Paraphrase longer content.
 5. Be comprehensive but focused on answering the specific question
-6. Do NOT use markdown - only HTML formatting"""
+
+IMPORTANT: Do NOT use <blockquote> tags. Do NOT use markdown. Write clean HTML only."""
 
     # Build messages with conversation history
     messages = [{"role": "system", "content": system_message}]
@@ -471,33 +476,33 @@ async def get_expert_category_perspective(input_query: str, expert_category: str
         base_url="https://api.x.ai/v1"
     )
     
-    prompt = f"""You are analyzing the perspective of a specific expert category on a given topic. Your task is to provide a comprehensive, detailed, and elaborative analysis.
+    prompt = f"""You are analyzing the perspective of a specific expert category on a given topic. Your task is to provide a comprehensive, detailed analysis.
 
-    Expert Category: {expert_category}
-    User Query/Topic: {input_query}
+Expert Category: {expert_category}
+User Query/Topic: {input_query}
 
-    Recent posts from accounts in this expert category:
-    {json.dumps(posts_data, indent=2)}
+Recent posts from accounts in this expert category:
+{json.dumps(posts_data, indent=2)}
 
-    Your task is to write a comprehensive, detailed, and elaborative perspective that:
-    1. Analyzes how this expert category views and discusses the topic "{input_query}"
-    2. Synthesizes their collective perspective - identify common themes, concerns, insights, viewpoints, and patterns
-    3. Provides specific examples and quotes from their posts where relevant
-    4. Explains the context and significance of their viewpoints
-    5. Highlights what makes their perspective unique or valuable
-    6. Discusses any trends, developments, or emerging discussions they're having
-    7. Elaborates on the implications of their views and what it means for the broader conversation
+Your task is to write a comprehensive perspective that:
+1. Analyzes how this expert category views and discusses the topic "{input_query}"
+2. Synthesizes their collective perspective - identify common themes, concerns, insights, and patterns
+3. References specific experts inline using <strong>@username</strong> format
+4. Explains the context and significance of their viewpoints
+5. Highlights what makes their perspective unique or valuable
 
-    Write in a clear, engaging, and comprehensive style. Be detailed and elaborative - don't just summarize, but provide deep analysis and context. The response should be substantial (aim for 5-8 paragraphs or more if needed to fully cover the topic).
+Structure your response with:
+- <h4> tags for section headings
+- <strong> tags to emphasize key terms and expert names
+- <ul> and <li> tags for lists where appropriate
+- Keep any direct quotes SHORT (max 1-2 sentences). Paraphrase longer content.
 
-    Structure your response as a flowing narrative that:
-    - Opens with an overview of how this expert category approaches the topic
-    - Dives deep into specific themes, viewpoints, and discussions
-    - Provides concrete examples and highlights from their recent posts
-    - Explores the nuances and implications of their perspective
-    - Concludes with key takeaways or emerging patterns
+IMPORTANT formatting rules:
+- Do NOT use <blockquote> tags
+- Do NOT use markdown or code fences
+- Write clean, properly nested HTML
 
-    Write the perspective directly, without any JSON formatting or additional structure. Just provide the comprehensive analysis as flowing text."""
+The response should be substantial (4-6 sections) but focused and well-organized."""
 
     messages = [{"role": "user", "content": prompt}]
     
