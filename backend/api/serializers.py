@@ -188,7 +188,7 @@ class FetchTopicsRanksHandleSerializer(serializers.Serializer):
 
 class FetchExpertCategoriesSerializer(serializers.Serializer):
     ids = serializers.ListField(child=serializers.CharField(), write_only=True)
-    categories = serializers.DictField(child=serializers.ListField(child=serializers.IntegerField()), read_only=True)
+    categories = serializers.DictField(child=serializers.ListField(child=serializers.CharField()), read_only=True)
 
     def save(self, **kwargs):
         ids = self.validated_data.get('ids')
