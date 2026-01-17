@@ -325,7 +325,7 @@ def clean_text_for_speech(text: str) -> str:
 
 def text_to_speech(text: str):
     """
-    Convert text to speech using the OpenAI/Grok TTS API.
+    Convert text to speech using the Grok TTS API.
     """
     from openai import OpenAI
 
@@ -336,7 +336,7 @@ def text_to_speech(text: str):
 
     # Generate speech from cleaned text
     speech = client.audio.speech.create(
-        model="gpt-4o-mini-tts",
+        model="grok-4-1-fast-non-reasoning",
         voice="alloy",
         input=cleaned_text,
     )
@@ -345,7 +345,7 @@ def text_to_speech(text: str):
 
 def speech_to_text(audio_file):
     """
-    Convert speech to text using the OpenAI API.
+    Convert speech to text using the Grok API.
     
     Args:
         audio_file: Django UploadedFile object, file-like object, bytes, or file path string
@@ -366,23 +366,19 @@ def speech_to_text(audio_file):
         # Get filename from uploaded file if available
         if hasattr(audio_file, 'name') and audio_file.name:
             filename = os.path.basename(audio_file.name)
-        # Wrap in BytesIO for OpenAI/Grok API (which expects io.IOBase)
         file_obj = io.BytesIO(audio_bytes)
     elif isinstance(audio_file, bytes):
         # Bytes data - wrap in BytesIO
         file_obj = io.BytesIO(audio_file)
     elif isinstance(audio_file, str):
-        # File path string - use directly (OpenAI/Grok accepts file paths)
         file_obj = audio_file
         filename = os.path.basename(audio_file)
     else:
         raise ValueError(f"Unsupported audio_file type: {type(audio_file)}")
 
-    # OpenAI/Grok API accepts file paths directly, or (filename, file_obj) tuple for BytesIO
     if isinstance(file_obj, io.BytesIO):
-        # For BytesIO, pass as tuple with filename so OpenAI can detect format
         transcript = client.audio.transcriptions.create(
-            model="whisper-1",
+            model="grok-4-1-fast-non-reasoning",
             file=(filename, file_obj, "audio/mpeg") 
         )
     else:
