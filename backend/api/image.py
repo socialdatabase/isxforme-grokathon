@@ -34,7 +34,7 @@ def generate_video_from_image(image_url: str, text: str):
     return request_id
 
 
-def fetch_video_from_request_id(request_id: str, max_sleep_time: int = 30):
+def fetch_video_from_request_id(request_id: str, max_sleep_time: int = 120):
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {settings.XAI_TOKEN}"
