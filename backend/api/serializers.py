@@ -15,6 +15,7 @@ from api.timeline import (
 )
 from api.groksignal import (
     extract_expert_categories,
+    get_xai_handles_summary,
 )
 from api.voicethomas import (
     text_to_speech as xai_text_to_speech,
@@ -22,6 +23,19 @@ from api.voicethomas import (
     get_available_voices,
     AVAILABLE_VOICES,
 )
+from api.image import (
+    fetch_video_from_image,
+)
+
+class XaiImageToVideoSerializer(serializers.Serializer):
+    image_url = serializers.URLField(write_only=True)
+    video_url = serializers.URLField(read_only=True)
+
+    def save(self, **kwargs):
+        image_url = self.validated_data.get('image_url')
+        video_url = fetch_video_from_image(image_url)
+        self.instance = {"video_url": video_url}
+        return self.instance
 
 
 class PublicMetricsSerializer(serializers.Serializer):
@@ -285,4 +299,17 @@ class XaiVoicesSerializer(serializers.Serializer):
     
     def save(self, **kwargs):
         self.instance = {"voices": get_available_voices()}
+        return self.instance
+
+
+class XaiHandlesSummarySerializer(serializers.Serializer):
+    ids = serializers.ListField(child=serializers.CharField(), write_only=True)
+    input_query = serializers.CharField(write_only=True)
+    summary = serializers.CharField(read_only=True)
+
+    def save(self, **kwargs):
+        ids = self.validated_data.get('ids')
+        input_query = self.validated_data.get('input_query')
+        summary = get_xai_handles_summary(ids, input_query)
+        self.instance = {"summary": summary}
         return self.instance

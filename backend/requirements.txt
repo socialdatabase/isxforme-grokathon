@@ -11,3 +11,4 @@ httpx>=0.27.0
 gunicorn==21.2.0
 websockets>=12.0
 pydub>=0.25.1
+xai_sdk==1.5.0

@@ -36,6 +36,52 @@ def fetch_account_by_username(username: str):
     return accounts[0]
 
 
+def infer_genders_from_names(names: list[str]) -> dict[str, str]:
+    """
+    Use Grok to infer likely gender from a list of names.
+    Used to assign appropriate male/female voices for TTS.
+    
+    Args:
+        names: List of display names to analyze
+    
+    Returns:
+        dict: Mapping of name -> 'male' | 'female' | 'unknown'
+    """
+    if not names:
+        return {}
+    
+    client = OpenAI(
+        api_key=settings.XAI_TOKEN,
+        base_url="https://api.x.ai/v1"
+    )
+    
+    prompt = f"""For each name below, determine the most likely gender based on the name. 
+This is for assigning appropriate voice actors (male/female voices) for a debate simulation.
+
+Names to analyze:
+{json.dumps(names, indent=2)}
+
+Return ONLY a JSON object mapping each name to "male", "female", or "unknown" (for organizations, unclear names, etc).
+Example: {{"John Smith": "male", "Sarah Connor": "female", "OpenAI": "unknown"}}
+
+JSON response:"""
+
+    response = client.chat.completions.create(
+        model="grok-4-1-fast-non-reasoning",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.1,
+        response_format={"type": "json_object"},
+    )
+    
+    try:
+        result = json.loads(response.choices[0].message.content)
+        # Normalize values to lowercase
+        return {name: gender.lower() for name, gender in result.items()}
+    except (json.JSONDecodeError, AttributeError):
+        # Fallback: return unknown for all
+        return {name: "unknown" for name in names}
+
+
 async def generate_ai_bio_handle(handle: str):
     """
     Generate a short AI-powered bio of an X (Twitter) account based on their profile and recent activity.
@@ -479,6 +525,112 @@ IMPORTANT: Do NOT use <blockquote> tags. Do NOT use markdown. Write clean HTML o
             yield chunk.choices[0].delta.content
 
 
+async def get_expert_debate_response(
+    question: str,
+    expert_name: str,
+    expert_username: str,
+    expert_role: str,
+    expert_posts: list[dict],
+    conversation_history: list[dict] = None,
+    is_first_speaker: bool = False
+):
+    """
+    Generate a debate response from a specific expert's perspective.
+    The expert responds based on their own posts/content and the conversation so far.
+    
+    Args:
+        question: The debate question/topic
+        expert_name: Display name of the expert
+        expert_username: Username of the expert
+        expert_role: Role/category of the expert (e.g., "F1 Driver", "ML Researcher")
+        expert_posts: List of the expert's recent posts with text, like_count, etc.
+        conversation_history: Previous responses in the debate [{speaker, text}]
+        is_first_speaker: Whether this expert is starting the debate
+    
+    Yields:
+        str: Chunks of text as the response is generated
+    """
+    client = OpenAI(
+        api_key=settings.XAI_TOKEN,
+        base_url="https://api.x.ai/v1"
+    )
+    
+    # Prepare the expert's posts as context (limit to most relevant)
+    posts_context = []
+    for post in expert_posts[:8]:
+        posts_context.append({
+            "text": post.get("text", "")[:400],  # Truncate long posts
+            "likes": post.get("like_count", 0),
+        })
+    
+    # Build conversation context
+    conversation_text = ""
+    if conversation_history:
+        conversation_text = "\n\nWhat other experts have said so far:\n"
+        for msg in conversation_history:
+            conversation_text += f"- {msg.get('speaker_name', 'Expert')} ({msg.get('speaker_role', '')}): \"{msg.get('text', '')}\"\n"
+    
+    # Different prompt for first vs subsequent speakers
+    if is_first_speaker:
+        prompt = f"""You are {expert_name} (@{expert_username}), a {expert_role}.
+
+You're participating in an expert panel debate. The question asked is:
+"{question}"
+
+Your recent posts/thoughts that reflect your perspective:
+{json.dumps(posts_context, indent=2)}
+
+As the first speaker, introduce your perspective on this question. Draw from your actual posts and expertise.
+
+IMPORTANT RULES:
+- Speak in FIRST PERSON as {expert_name}
+- Keep it SHORT: 2-3 sentences max (this is a panel, not a monologue)
+- Be conversational and natural, like you're speaking
+- Reference your actual expertise and views from your posts
+- Don't use hashtags, URLs, or @ mentions
+- Don't use any formatting (no bold, no headers, no bullets)
+- Just plain conversational text
+
+Start directly with your response:"""
+    else:
+        prompt = f"""You are {expert_name} (@{expert_username}), a {expert_role}.
+
+You're participating in an expert panel debate. The question asked is:
+"{question}"
+{conversation_text}
+
+Your recent posts/thoughts that reflect your perspective:
+{json.dumps(posts_context, indent=2)}
+
+Respond to what's been said and add your unique perspective. Build on or respectfully contrast with previous points.
+
+IMPORTANT RULES:
+- Speak in FIRST PERSON as {expert_name}
+- Keep it SHORT: 2-3 sentences max (this is a panel, not a monologue)
+- Be conversational and natural, like you're speaking
+- You can agree, disagree, or add nuance to what others said
+- Reference your actual expertise and views from your posts
+- Don't use hashtags, URLs, or @ mentions  
+- Don't use any formatting (no bold, no headers, no bullets)
+- Just plain conversational text
+
+Start directly with your response:"""
+
+    messages = [{"role": "user", "content": prompt}]
+    
+    stream = client.chat.completions.create(
+        model="grok-4-1-fast-non-reasoning",
+        messages=messages,
+        temperature=0.7,  # Higher for more natural conversation
+        max_tokens=200,  # Keep responses short
+        stream=True,
+    )
+    
+    for chunk in stream:
+        if chunk.choices[0].delta.content is not None:
+            yield chunk.choices[0].delta.content
+
+
 async def get_expert_category_perspective(input_query: str, expert_category: str, ids: list[str]):
     """
     Stream the perspective of an expert category on a given query by analyzing their recent posts.
@@ -563,3 +715,47 @@ The response should be substantial (4-6 sections) but focused and well-organized
     for chunk in stream:
         if chunk.choices[0].delta.content is not None:
             yield chunk.choices[0].delta.content
+
+
+def get_xai_handles_summary(ids: list[str], input_query: str):
+    import os
+    from xai_sdk import Client
+    from xai_sdk.chat import user
+    from xai_sdk.tools import x_search
+    
+    # Use environment variable (safer than hard-coded settings)
+    api_key = settings.XAI_TOKEN
+    client = Client(api_key=api_key)
+
+    accounts = fetch_accounts(ids[:10])
+    allowed_x_handles = [account.get("username") for account in accounts]
+    
+    chat = client.chat.create(
+        model="grok-4-1-fast",
+        tools=[x_search(allowed_x_handles=allowed_x_handles)],
+    )
+    
+    chat.append(user(input_query))
+    
+    # Non-streaming: get the complete response using chat.sample()
+    response = chat.sample()
+    
+    # Extract the text - based on xAI SDK, response is typically an object
+    # with .content or similar; adjust if needed based on actual structure
+    if hasattr(response, 'content'):
+        return response.content.strip()
+    elif hasattr(response, 'message') and hasattr(response.message, 'content'):
+        return response.message.content.strip()
+    elif isinstance(response, str):
+        return response.strip()
+    else:
+        # Debug fallback
+        print("Unknown response format:", type(response), dir(response))
+        return str(response)
+
+# def test_xai_status():
+#     try:
+#         result = get_xai_status()
+#         print(result)
+#     except Exception as e:
+#         print("Error:", str(e))

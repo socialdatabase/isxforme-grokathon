@@ -130,7 +130,7 @@
     <!-- Debate Controls (only show when debate started) -->
     <div v-if="debateStarted" class="debate-controls">
       <div class="control-info">
-        <span class="message-count">{{ displayedMessages.length }} / {{ debateMessages.length }} messages</span>
+        <span class="message-count">{{ displayedMessages.length }} / {{ experts.length }} experts</span>
       </div>
 
       <!-- Now Speaking (inline) -->
@@ -186,6 +186,9 @@ interface Expert {
   avatar: string
   verified: boolean
   role: string
+  posts?: ExpertPost[]
+  gender?: 'male' | 'female' | 'unknown'
+  voice?: string
 }
 
 interface Message {
@@ -201,6 +204,18 @@ interface ApiAccount {
   profile_image_url?: string
   verified?: boolean
   description?: string
+}
+
+interface ExpertPost {
+  text: string
+  like_count: number
+  retweet_count?: number
+}
+
+interface ConversationEntry {
+  speaker_name: string
+  speaker_role: string
+  text: string
 }
 
 const debateTopic = ref('')
@@ -219,6 +234,133 @@ const isProcessingAudio = ref(false)
 const transcribedQuestion = ref('')
 const mediaRecorder = ref<MediaRecorder | null>(null)
 const audioChunks = ref<Blob[]>([])
+
+// TTS playback state
+const audioContext = ref<AudioContext | null>(null)
+const isPlayingAudio = ref(false)
+
+// Available Grok voices by gender
+const FEMALE_VOICES = ['ara', 'eve', 'una']
+const MALE_VOICES = ['rex', 'sal', 'leo']
+
+// Counters for cycling through voices of each gender
+const maleVoiceIndex = ref(0)
+const femaleVoiceIndex = ref(0)
+
+// Get voice for expert based on their gender
+const getVoiceForExpert = (expert: Expert): string => {
+  // If expert already has a voice assigned, use it
+  if (expert.voice) return expert.voice
+  
+  // Assign based on gender
+  if (expert.gender === 'female') {
+    const voice = FEMALE_VOICES[femaleVoiceIndex.value % FEMALE_VOICES.length] || 'ara'
+    femaleVoiceIndex.value++
+    return voice
+  } else {
+    // Default to male voice for male/unknown
+    const voice = MALE_VOICES[maleVoiceIndex.value % MALE_VOICES.length] || 'rex'
+    maleVoiceIndex.value++
+    return voice
+  }
+}
+
+// Voice queue for sequential playback (doesn't block text streaming)
+interface VoiceQueueItem {
+  text: string
+  voice: string
+  expertName: string
+}
+const voiceQueue = ref<VoiceQueueItem[]>([])
+const isProcessingVoiceQueue = ref(false)
+
+// Add to voice queue (non-blocking)
+const queueExpertVoice = (text: string, expert: Expert) => {
+  if (!voiceMode.value || !text.trim()) return
+  
+  voiceQueue.value.push({
+    text,
+    voice: expert.voice || 'rex',
+    expertName: expert.name
+  })
+  
+  // Start processing queue if not already running
+  if (!isProcessingVoiceQueue.value) {
+    processVoiceQueue()
+  }
+}
+
+// Process voice queue sequentially in background
+const processVoiceQueue = async () => {
+  if (isProcessingVoiceQueue.value) return
+  isProcessingVoiceQueue.value = true
+  
+  try {
+    // Initialize audio context if needed
+    if (!audioContext.value) {
+      audioContext.value = new AudioContext({ sampleRate: 24000 })
+    }
+    
+    while (voiceQueue.value.length > 0) {
+      // Wait while paused
+      while (isPaused.value) {
+        // Suspend audio context when paused
+        if (audioContext.value && audioContext.value.state === 'running') {
+          await audioContext.value.suspend()
+        }
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+      
+      // Resume audio context when unpaused
+      if (audioContext.value && audioContext.value.state === 'suspended') {
+        await audioContext.value.resume()
+      }
+      
+      // Check if voice mode is still on
+      if (!voiceMode.value) {
+        voiceQueue.value = []
+        break
+      }
+      
+      const item = voiceQueue.value.shift()
+      if (!item) continue
+      
+      isPlayingAudio.value = true
+      
+      try {
+        // Fetch TTS audio
+        const response = await fetch(
+          `${config.public.apiBase}/grokathon/xai-text-to-speech/?text=${encodeURIComponent(item.text)}&voice=${item.voice}`
+        )
+        
+        if (!response.ok) {
+          throw new Error(`TTS request failed: ${response.status}`)
+        }
+        
+        // Get audio data and decode it
+        const arrayBuffer = await response.arrayBuffer()
+        const audioBuffer = await audioContext.value!.decodeAudioData(arrayBuffer)
+        
+        // Create buffer source and play
+        const source = audioContext.value!.createBufferSource()
+        source.buffer = audioBuffer
+        source.connect(audioContext.value!.destination)
+        
+        // Wait for audio to finish before playing next
+        await new Promise<void>((resolve) => {
+          source.onended = () => resolve()
+          source.start(0)
+        })
+        
+      } catch (err) {
+        console.error('Error playing TTS for', item.expertName, ':', err)
+      }
+    }
+  } finally {
+    isPlayingAudio.value = false
+    isProcessingVoiceQueue.value = false
+  }
+}
 
 // Toggle recording on/off
 const toggleRecording = async () => {
@@ -396,15 +538,78 @@ const fetchExperts = async (keyword: string) => {
       `${config.public.apiBase}/grokathon/fetch-accounts/?${expertIdsParams}`
     )
 
+    // Step 4: Fetch posts for these experts
+    const postsResponse = await $fetch<{ posts: Array<{ account: { username: string }, post: { text: string, like_count: number, retweet_count: number } }> }>(
+      `${config.public.apiBase}/grokathon/fetch-posts/?${expertIdsParams}`
+    )
+
+    // Group posts by username
+    const postsByUsername: Record<string, ExpertPost[]> = {}
+    if (postsResponse.posts) {
+      for (const item of postsResponse.posts) {
+        const username = item.account?.username
+        if (username) {
+          if (!postsByUsername[username]) {
+            postsByUsername[username] = []
+          }
+          postsByUsername[username].push({
+            text: item.post?.text || '',
+            like_count: item.post?.like_count || 0,
+            retweet_count: item.post?.retweet_count || 0
+          })
+        }
+      }
+    }
+
     if (accountsResponse.accounts && accountsResponse.accounts.length > 0) {
-      // Map accounts to experts with their category as role
-      experts.value = accountsResponse.accounts.map((acc: ApiAccount, index: number) => ({
-        name: acc.name || acc.username,
-        username: acc.username,
-        avatar: acc.profile_image_url?.replace('_normal', '_400x400') || '',
-        verified: acc.verified || false,
-        role: sortedCategories[index]?.[0] || 'Expert'
-      }))
+      // Step 5: Infer genders for voice assignment
+      const names = accountsResponse.accounts.map((acc: ApiAccount) => acc.name || acc.username)
+      let genderMap: Record<string, string> = {}
+      
+      try {
+        const genderResponse = await fetch(`${config.public.apiBase}/grokathon/infer-genders/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ names })
+        })
+        if (genderResponse.ok) {
+          const genderData = await genderResponse.json()
+          genderMap = genderData.genders || {}
+        }
+      } catch (genderErr) {
+        console.error('Error inferring genders:', genderErr)
+      }
+      
+      // Reset voice counters for this debate
+      maleVoiceIndex.value = 0
+      femaleVoiceIndex.value = 0
+      
+      // Map accounts to experts with their category, posts, gender and voice
+      experts.value = accountsResponse.accounts.map((acc: ApiAccount, index: number) => {
+        const name = acc.name || acc.username
+        const gender = (genderMap[name] || 'unknown') as 'male' | 'female' | 'unknown'
+        
+        // Assign voice based on gender
+        let voice: string
+        if (gender === 'female') {
+          voice = FEMALE_VOICES[femaleVoiceIndex.value % FEMALE_VOICES.length] || 'ara'
+          femaleVoiceIndex.value++
+        } else {
+          voice = MALE_VOICES[maleVoiceIndex.value % MALE_VOICES.length] || 'rex'
+          maleVoiceIndex.value++
+        }
+        
+        return {
+          name,
+          username: acc.username,
+          avatar: acc.profile_image_url?.replace('_normal', '_400x400') || '',
+          verified: acc.verified || false,
+          role: sortedCategories[index]?.[0] || 'Expert',
+          posts: postsByUsername[acc.username] || [],
+          gender,
+          voice
+        }
+      })
     }
   } catch (err) {
     console.error('Error fetching experts:', err)
@@ -412,9 +617,6 @@ const fetchExperts = async (keyword: string) => {
     loadingExperts.value = false
   }
 }
-
-// Debate messages will be populated dynamically
-const debateMessages = ref<Message[]>([])
 
 const displayedMessages = ref<Message[]>([])
 const currentMessageIndex = ref(0)
@@ -430,50 +632,94 @@ const getExpert = (username: string): Expert => {
   }
 }
 
-// Generate initial debate messages based on loaded experts
-const generateDebateIntro = () => {
-  if (experts.value.length === 0) return
+// Conversation history for AI context
+const conversationHistory = ref<ConversationEntry[]>([])
+
+// Stream a single expert's response from the API
+const streamExpertResponse = async (expert: Expert, isFirstSpeaker: boolean): Promise<string> => {
+  const question = debateTopic.value || props.keyword || 'this topic'
   
-  // Use transcribed question if available, otherwise fall back to keyword
-  const topic = debateTopic.value || props.keyword || 'this topic'
-  const isQuestion = debateTopic.value && (debateTopic.value.includes('?') || debateTopic.value.toLowerCase().startsWith('what') || debateTopic.value.toLowerCase().startsWith('how') || debateTopic.value.toLowerCase().startsWith('why'))
-  const messages: Message[] = []
+  // Add message placeholder
+  const messageIndex = displayedMessages.value.length
+  displayedMessages.value.push({
+    speaker: expert.username,
+    text: '',
+    displayedText: ''
+  })
+  scrollToBottom()
   
-  // First expert introduces the topic
-  if (experts.value[0]) {
-    if (isQuestion) {
-      messages.push({
-        speaker: experts.value[0].username,
-        text: `Great question! "<strong>${topic}</strong>" - As a ${experts.value[0].role}, I've thought a lot about this. Let me share my perspective...`
+  currentSpeaker.value = expert.username
+  isTyping.value = true
+  
+  let fullText = ''
+  
+  try {
+    const response = await fetch(`${config.public.apiBase}/grokathon/stream-debate-response/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        question,
+        expert_name: expert.name,
+        expert_username: expert.username,
+        expert_role: expert.role,
+        expert_posts: expert.posts || [],
+        conversation_history: conversationHistory.value,
+        is_first_speaker: isFirstSpeaker
       })
-    } else {
-      messages.push({
-        speaker: experts.value[0].username,
-        text: `Welcome everyone! Today we're discussing <strong>${topic}</strong>. As a ${experts.value[0].role}, I've been following this topic closely. Let me share my perspective...`
-      })
+    })
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get response: ${response.status}`)
+    }
+    
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error('No reader available')
+    
+    const decoder = new TextDecoder()
+    
+    while (true) {
+      if (isPaused.value) {
+        // Wait while paused
+        await new Promise(resolve => setTimeout(resolve, 100))
+        continue
+      }
+      
+      const { done, value } = await reader.read()
+      if (done) break
+      
+      const chunk = decoder.decode(value, { stream: true })
+      fullText += chunk
+      
+      // Update displayed text
+      if (displayedMessages.value[messageIndex]) {
+        displayedMessages.value[messageIndex].displayedText = fullText
+        displayedMessages.value[messageIndex].text = fullText
+      }
+      scrollToBottom()
+    }
+    
+    // Add to conversation history for next expert
+    conversationHistory.value.push({
+      speaker_name: expert.name,
+      speaker_role: expert.role,
+      text: fullText
+    })
+    
+    // Queue TTS for the expert's response (non-blocking, plays in background)
+    if (fullText.trim()) {
+      queueExpertVoice(fullText, expert)
+    }
+    
+  } catch (err) {
+    console.error('Error streaming expert response:', err)
+    fullText = `As a ${expert.role}, I have some thoughts on this topic...`
+    if (displayedMessages.value[messageIndex]) {
+      displayedMessages.value[messageIndex].displayedText = fullText
+      displayedMessages.value[messageIndex].text = fullText
     }
   }
   
-  // Other experts respond
-  experts.value.slice(1).forEach((expert, index) => {
-    const responses = isQuestion ? [
-      `That's a thoughtful answer. From my experience as a ${expert.role}, I'd add that when it comes to "<strong>${topic}</strong>"...`,
-      `I'd like to expand on that. The ${expert.role} perspective on this question reveals some fascinating insights...`,
-      `Great points so far. What's often overlooked in this discussion is the nuance that comes from the ${expert.role} angle...`,
-      `Building on what's been said, I think the key aspect we should focus on is...`
-    ] : [
-      `That's an interesting take. From my experience as a ${expert.role}, I see things a bit differently when it comes to <strong>${topic}</strong>...`,
-      `I'd like to add to that discussion. The ${expert.role} perspective on <strong>${topic}</strong> reveals some fascinating insights...`,
-      `Great points so far. What's often overlooked about <strong>${topic}</strong> is the nuance that comes from the ${expert.role} angle...`,
-      `Building on what's been said, I think the key aspect of <strong>${topic}</strong> that we should focus on is...`
-    ]
-    messages.push({
-      speaker: expert.username,
-      text: responses[index % responses.length]
-    })
-  })
-  
-  debateMessages.value = messages
+  return fullText
 }
 
 const scrollToBottom = () => {
@@ -484,96 +730,76 @@ const scrollToBottom = () => {
   })
 }
 
-const typeMessage = () => {
-  if (isPaused.value) return
-  
-  if (currentMessageIndex.value >= debateMessages.value.length) {
-    isTyping.value = false
-    currentSpeaker.value = null
-    nextSpeaker.value = null
-    return
-  }
-
-  const message = debateMessages.value[currentMessageIndex.value]
-  
-  // Set current speaker
-  currentSpeaker.value = message.speaker
-  
-  // Set next speaker for typing indicator
-  if (currentMessageIndex.value + 1 < debateMessages.value.length) {
-    nextSpeaker.value = debateMessages.value[currentMessageIndex.value + 1].speaker
-  } else {
-    nextSpeaker.value = null
-  }
-
-  // If this is a new message, add it to displayed messages
-  if (displayedMessages.value.length <= currentMessageIndex.value) {
-    displayedMessages.value.push({
-      speaker: message.speaker,
-      text: message.text,
-      displayedText: ''
-    })
-    scrollToBottom()
-  }
-
-  // Type out the message character by character
-  const currentMessage = displayedMessages.value[currentMessageIndex.value]
-  if (currentCharIndex.value < message.text.length) {
-    isTyping.value = true
-    const chunkSize = 3
-    currentMessage.displayedText = message.text.slice(0, currentCharIndex.value + chunkSize)
-    currentCharIndex.value += chunkSize
-    scrollToBottom()
-    setTimeout(typeMessage, 15)
-  } else {
-    // Message complete, move to next
-    currentMessage.displayedText = message.text
-    currentMessageIndex.value++
-    currentCharIndex.value = 0
-    
-    // Pause between messages
-    setTimeout(() => {
-      if (!isPaused.value) {
-        typeMessage()
-      }
-    }, 1500)
-  }
-}
-
 const startDebate = async () => {
   // First fetch experts if we have a keyword and don't have experts yet
   if (props.keyword && experts.value.length === 0) {
     await fetchExperts(props.keyword)
   }
   
-  // Generate debate messages if not yet generated
-  if (debateMessages.value.length === 0 && experts.value.length > 0) {
-    generateDebateIntro()
-  }
-  
-  // Don't start if no messages
-  if (debateMessages.value.length === 0) {
+  // Don't start if no experts
+  if (experts.value.length === 0) {
     return
   }
   
+  // Reset state
   displayedMessages.value = []
+  conversationHistory.value = []
   currentMessageIndex.value = 0
   currentCharIndex.value = 0
   isTyping.value = true
   isPaused.value = false
-  setTimeout(typeMessage, 1000)
+  
+  // Stream responses from each expert in sequence
+  for (let i = 0; i < experts.value.length; i++) {
+    const expert = experts.value[i]
+    
+    // Set next speaker for typing indicator
+    if (i + 1 < experts.value.length) {
+      nextSpeaker.value = experts.value[i + 1].username
+    } else {
+      nextSpeaker.value = null
+    }
+    
+    // Stream this expert's response
+    await streamExpertResponse(expert, i === 0)
+    
+    // Small pause between speakers
+    if (i < experts.value.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 1000))
+    }
+  }
+  
+  // Debate complete
+  isTyping.value = false
+  currentSpeaker.value = null
+  nextSpeaker.value = null
 }
 
 const restartDebate = () => {
+  conversationHistory.value = []
+  voiceQueue.value = []  // Clear voice queue
   startDebate()
 }
 
-const togglePause = () => {
+const togglePause = async () => {
   isPaused.value = !isPaused.value
-  if (!isPaused.value && currentMessageIndex.value < debateMessages.value.length) {
-    typeMessage()
+  
+  // Pause/resume audio playback
+  if (audioContext.value) {
+    if (isPaused.value && audioContext.value.state === 'running') {
+      await audioContext.value.suspend()
+    } else if (!isPaused.value && audioContext.value.state === 'suspended') {
+      await audioContext.value.resume()
+    }
   }
 }
+
+// Stop voice playback when voice mode is toggled off
+watch(voiceMode, (isOn: boolean) => {
+  if (!isOn) {
+    voiceQueue.value = []  // Clear queue when voice is turned off
+  }
+})
 
 // Load experts when component becomes active (but don't start debate)
 watch(() => props.isActive, async (active: boolean) => {
@@ -586,8 +812,8 @@ watch(() => props.isActive, async (active: boolean) => {
 watch(() => props.keyword, async (newKeyword: string | undefined) => {
   if (newKeyword && props.isActive) {
     experts.value = []
-    debateMessages.value = []
     displayedMessages.value = []
+    conversationHistory.value = []
     debateStarted.value = false
     await fetchExperts(newKeyword)
   }
@@ -675,7 +901,11 @@ watch(() => props.keyword, async (newKeyword: string | undefined) => {
 
 .voice-mode.active .voice-icon {
   background-color: #1d9bf0;
-  color: #fff;
+  color: #fff !important;
+}
+
+.voice-mode.active .voice-icon svg {
+  color: #fff !important;
 }
 
 .voice-label {
