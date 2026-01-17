@@ -41,14 +41,8 @@
                   @mouseenter="($event.target as HTMLVideoElement).play()"
                   @mouseleave="v => { (v.target as HTMLVideoElement).pause(); (v.target as HTMLVideoElement).currentTime = 0; }" />
                 <img v-else :src="articles[0].image" :alt="articles[0].headline" @error="handleImageError($event, 0)" />
-                <!-- Loading spinner when video is generating -->
-                 
-                <div v-if="articles[0].videoLoading" class="loading-spinner-bg" >
-                  <div class="loading-spinner">  
-                  </div>
-                </div>
                 <!-- Play button visual when video is ready -->
-                <div v-if="articles[0].video && !articles[0].videoLoading" class="play-button flex! group-hover:hidden!">
+                <div v-if="articles[0].video" class="play-button flex! group-hover:hidden!">
                   <svg class="" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24">
                     <path fill="currentColor" d="M8 17.175V6.825q0-.425.3-.713t.7-.287q.125 0 .263.037t.262.113l8.15 5.175q.225.15.338.375t.112.475t-.112.475t-.338.375l-8.15 5.175q-.125.075-.262.113T9 18.175q-.4 0-.7-.288t-.3-.712" />
                   </svg>
@@ -71,13 +65,8 @@
                   @mouseenter="($event.target as HTMLVideoElement).play()"
                   @mouseleave="v => { (v.target as HTMLVideoElement).pause(); (v.target as HTMLVideoElement).currentTime = 0; }" />
                 <img v-else :src="article.image" :alt="article.headline" @error="handleImageError($event, Number(index) + 1)" />
-                <!-- Loading spinner when video is generating -->
-                  <div v-if="article.videoLoading" class="loading-spinner-bg" >
-                  <div class="loading-spinner">  
-                  </div>
-                </div>
                 <!-- Play button visual when video is ready -->
-                <div v-if="article.video && !article.videoLoading" class="play-button flex! group-hover:hidden!">
+                <div v-if="article.video" class="play-button flex! group-hover:hidden!">
                   <svg class="" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24">
                     <path fill="currentColor" d="M8 17.175V6.825q0-.425.3-.713t.7-.287q.125 0 .263.037t.262.113l8.15 5.175q.225.15.338.375t.112.475t-.112.475t-.338.375l-8.15 5.175q-.125.075-.262.113T9 18.175q-.4 0-.7-.288t-.3-.712" />
                   </svg>
@@ -175,29 +164,29 @@ const handleImageError = (event: Event, index: number) => {
   img.style.display = 'none'
 }
 
-// Changed: Made assignVideos async and use a sequential for-await loop to generate videos one by one
-const assignVideos = async () => {
-  for (const article of articles.value) {
-    if (article.image) {
-      article.videoLoading = true
-      try {
-        const res = await $fetch<{ video_url: string }>(
-          `${config.public.apiBase}/grokathon/xai-image-to-video/`,
-          {
-            method: 'POST',
-            body: { image_url: article.image, text: article.content || '' }
-          }
-        )
-        console.log(res.video_url)
-        article.video = res.video_url || null
-      } catch (e) {
-        console.error('Video generation error for image:', article.image, e)
-      } finally {
-        article.videoLoading = false
-      }
-    }
-  }
-}
+// Video generation disabled for now
+// const assignVideos = async () => {
+//   for (const article of articles.value) {
+//     if (article.image) {
+//       article.videoLoading = true
+//       try {
+//         const res = await $fetch<{ video_url: string }>(
+//           `${config.public.apiBase}/grokathon/xai-image-to-video/`,
+//           {
+//             method: 'POST',
+//             body: { image_url: article.image, text: article.content || '' }
+//           }
+//         )
+//         console.log(res.video_url)
+//         article.video = res.video_url || null
+//       } catch (e) {
+//         console.error('Video generation error for image:', article.image, e)
+//       } finally {
+//         article.videoLoading = false
+//       }
+//     }
+//   }
+// }
 
 const generateNewspaper = async (keyword: string) => {
   loading.value = true
@@ -339,11 +328,11 @@ const generateNewspaper = async (keyword: string) => {
           return {
             ...article,
             image: selectedImage,
-            videoLoading: true,
+            videoLoading: false,
             imageCaption: article.imageCaption || `Related to ${keyword}`
           }
         })
-        assignVideos()  // Start generating videos async
+        // assignVideos()  // Video generation disabled for now
       } else {
         console.log('No articles returned, using fallback')
         generateFallbackArticles(postsResponse.posts, keyword)
