@@ -25,7 +25,7 @@ from api.serializers import (
     XaiVoicesSerializer,
 )
 from api.core import QueryFilter
-from api.groksignal import get_expert_category_perspective, get_expert_overview, get_followup_response, generate_ai_bio_handle, fetch_account_by_username, get_expert_debate_response
+from api.groksignal import get_expert_category_perspective, get_expert_overview, get_followup_response, generate_ai_bio_handle, fetch_account_by_username, get_expert_debate_response, infer_genders_from_names
 from api.newspaper import generate_newspaper_articles
 
 
@@ -584,6 +584,34 @@ class GrokathonViewSet(viewsets.GenericViewSet):
         response['Cache-Control'] = 'no-cache'
         response['X-Accel-Buffering'] = 'no'  # Disable buffering in nginx
         return response
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="infer-genders",
+        url_name="infer-genders",
+    )
+    def infer_genders(self, request):
+        """
+        Infer likely gender from a list of names using Grok.
+        Used for assigning appropriate male/female TTS voices.
+        
+        POST body (JSON):
+        - names: List of display names to analyze
+        
+        Returns JSON with name -> gender mapping.
+        """
+        data = request.data
+        names = data.get("names", [])
+        
+        if not names:
+            return Response(
+                {"error": "Missing required parameter: names"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        genders = infer_genders_from_names(names)
+        return Response({"genders": genders})
 
     @action(
         detail=False,

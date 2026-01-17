@@ -187,6 +187,8 @@ interface Expert {
   verified: boolean
   role: string
   posts?: ExpertPost[]
+  gender?: 'male' | 'female' | 'unknown'
+  voice?: string
 }
 
 interface Message {
@@ -232,6 +234,133 @@ const isProcessingAudio = ref(false)
 const transcribedQuestion = ref('')
 const mediaRecorder = ref<MediaRecorder | null>(null)
 const audioChunks = ref<Blob[]>([])
+
+// TTS playback state
+const audioContext = ref<AudioContext | null>(null)
+const isPlayingAudio = ref(false)
+
+// Available Grok voices by gender
+const FEMALE_VOICES = ['ara', 'eve', 'una']
+const MALE_VOICES = ['rex', 'sal', 'leo']
+
+// Counters for cycling through voices of each gender
+const maleVoiceIndex = ref(0)
+const femaleVoiceIndex = ref(0)
+
+// Get voice for expert based on their gender
+const getVoiceForExpert = (expert: Expert): string => {
+  // If expert already has a voice assigned, use it
+  if (expert.voice) return expert.voice
+  
+  // Assign based on gender
+  if (expert.gender === 'female') {
+    const voice = FEMALE_VOICES[femaleVoiceIndex.value % FEMALE_VOICES.length] || 'ara'
+    femaleVoiceIndex.value++
+    return voice
+  } else {
+    // Default to male voice for male/unknown
+    const voice = MALE_VOICES[maleVoiceIndex.value % MALE_VOICES.length] || 'rex'
+    maleVoiceIndex.value++
+    return voice
+  }
+}
+
+// Voice queue for sequential playback (doesn't block text streaming)
+interface VoiceQueueItem {
+  text: string
+  voice: string
+  expertName: string
+}
+const voiceQueue = ref<VoiceQueueItem[]>([])
+const isProcessingVoiceQueue = ref(false)
+
+// Add to voice queue (non-blocking)
+const queueExpertVoice = (text: string, expert: Expert) => {
+  if (!voiceMode.value || !text.trim()) return
+  
+  voiceQueue.value.push({
+    text,
+    voice: expert.voice || 'rex',
+    expertName: expert.name
+  })
+  
+  // Start processing queue if not already running
+  if (!isProcessingVoiceQueue.value) {
+    processVoiceQueue()
+  }
+}
+
+// Process voice queue sequentially in background
+const processVoiceQueue = async () => {
+  if (isProcessingVoiceQueue.value) return
+  isProcessingVoiceQueue.value = true
+  
+  try {
+    // Initialize audio context if needed
+    if (!audioContext.value) {
+      audioContext.value = new AudioContext({ sampleRate: 24000 })
+    }
+    
+    while (voiceQueue.value.length > 0) {
+      // Wait while paused
+      while (isPaused.value) {
+        // Suspend audio context when paused
+        if (audioContext.value && audioContext.value.state === 'running') {
+          await audioContext.value.suspend()
+        }
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+      
+      // Resume audio context when unpaused
+      if (audioContext.value && audioContext.value.state === 'suspended') {
+        await audioContext.value.resume()
+      }
+      
+      // Check if voice mode is still on
+      if (!voiceMode.value) {
+        voiceQueue.value = []
+        break
+      }
+      
+      const item = voiceQueue.value.shift()
+      if (!item) continue
+      
+      isPlayingAudio.value = true
+      
+      try {
+        // Fetch TTS audio
+        const response = await fetch(
+          `${config.public.apiBase}/grokathon/xai-text-to-speech/?text=${encodeURIComponent(item.text)}&voice=${item.voice}`
+        )
+        
+        if (!response.ok) {
+          throw new Error(`TTS request failed: ${response.status}`)
+        }
+        
+        // Get audio data and decode it
+        const arrayBuffer = await response.arrayBuffer()
+        const audioBuffer = await audioContext.value!.decodeAudioData(arrayBuffer)
+        
+        // Create buffer source and play
+        const source = audioContext.value!.createBufferSource()
+        source.buffer = audioBuffer
+        source.connect(audioContext.value!.destination)
+        
+        // Wait for audio to finish before playing next
+        await new Promise<void>((resolve) => {
+          source.onended = () => resolve()
+          source.start(0)
+        })
+        
+      } catch (err) {
+        console.error('Error playing TTS for', item.expertName, ':', err)
+      }
+    }
+  } finally {
+    isPlayingAudio.value = false
+    isProcessingVoiceQueue.value = false
+  }
+}
 
 // Toggle recording on/off
 const toggleRecording = async () => {
@@ -433,15 +562,54 @@ const fetchExperts = async (keyword: string) => {
     }
 
     if (accountsResponse.accounts && accountsResponse.accounts.length > 0) {
-      // Map accounts to experts with their category as role and posts
-      experts.value = accountsResponse.accounts.map((acc: ApiAccount, index: number) => ({
-        name: acc.name || acc.username,
-        username: acc.username,
-        avatar: acc.profile_image_url?.replace('_normal', '_400x400') || '',
-        verified: acc.verified || false,
-        role: sortedCategories[index]?.[0] || 'Expert',
-        posts: postsByUsername[acc.username] || []
-      }))
+      // Step 5: Infer genders for voice assignment
+      const names = accountsResponse.accounts.map((acc: ApiAccount) => acc.name || acc.username)
+      let genderMap: Record<string, string> = {}
+      
+      try {
+        const genderResponse = await fetch(`${config.public.apiBase}/grokathon/infer-genders/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ names })
+        })
+        if (genderResponse.ok) {
+          const genderData = await genderResponse.json()
+          genderMap = genderData.genders || {}
+        }
+      } catch (genderErr) {
+        console.error('Error inferring genders:', genderErr)
+      }
+      
+      // Reset voice counters for this debate
+      maleVoiceIndex.value = 0
+      femaleVoiceIndex.value = 0
+      
+      // Map accounts to experts with their category, posts, gender and voice
+      experts.value = accountsResponse.accounts.map((acc: ApiAccount, index: number) => {
+        const name = acc.name || acc.username
+        const gender = (genderMap[name] || 'unknown') as 'male' | 'female' | 'unknown'
+        
+        // Assign voice based on gender
+        let voice: string
+        if (gender === 'female') {
+          voice = FEMALE_VOICES[femaleVoiceIndex.value % FEMALE_VOICES.length] || 'ara'
+          femaleVoiceIndex.value++
+        } else {
+          voice = MALE_VOICES[maleVoiceIndex.value % MALE_VOICES.length] || 'rex'
+          maleVoiceIndex.value++
+        }
+        
+        return {
+          name,
+          username: acc.username,
+          avatar: acc.profile_image_url?.replace('_normal', '_400x400') || '',
+          verified: acc.verified || false,
+          role: sortedCategories[index]?.[0] || 'Expert',
+          posts: postsByUsername[acc.username] || [],
+          gender,
+          voice
+        }
+      })
     }
   } catch (err) {
     console.error('Error fetching experts:', err)
@@ -537,6 +705,11 @@ const streamExpertResponse = async (expert: Expert, isFirstSpeaker: boolean): Pr
       text: fullText
     })
     
+    // Queue TTS for the expert's response (non-blocking, plays in background)
+    if (fullText.trim()) {
+      queueExpertVoice(fullText, expert)
+    }
+    
   } catch (err) {
     console.error('Error streaming expert response:', err)
     fullText = `As a ${expert.role}, I have some thoughts on this topic...`
@@ -604,12 +777,29 @@ const startDebate = async () => {
 
 const restartDebate = () => {
   conversationHistory.value = []
+  voiceQueue.value = []  // Clear voice queue
   startDebate()
 }
 
-const togglePause = () => {
+const togglePause = async () => {
   isPaused.value = !isPaused.value
+  
+  // Pause/resume audio playback
+  if (audioContext.value) {
+    if (isPaused.value && audioContext.value.state === 'running') {
+      await audioContext.value.suspend()
+    } else if (!isPaused.value && audioContext.value.state === 'suspended') {
+      await audioContext.value.resume()
+    }
+  }
 }
+
+// Stop voice playback when voice mode is toggled off
+watch(voiceMode, (isOn: boolean) => {
+  if (!isOn) {
+    voiceQueue.value = []  // Clear queue when voice is turned off
+  }
+})
 
 // Load experts when component becomes active (but don't start debate)
 watch(() => props.isActive, async (active: boolean) => {
@@ -711,7 +901,11 @@ watch(() => props.keyword, async (newKeyword: string | undefined) => {
 
 .voice-mode.active .voice-icon {
   background-color: #1d9bf0;
-  color: #fff;
+  color: #fff !important;
+}
+
+.voice-mode.active .voice-icon svg {
+  color: #fff !important;
 }
 
 .voice-label {

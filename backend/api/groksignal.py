@@ -36,6 +36,52 @@ def fetch_account_by_username(username: str):
     return accounts[0]
 
 
+def infer_genders_from_names(names: list[str]) -> dict[str, str]:
+    """
+    Use Grok to infer likely gender from a list of names.
+    Used to assign appropriate male/female voices for TTS.
+    
+    Args:
+        names: List of display names to analyze
+    
+    Returns:
+        dict: Mapping of name -> 'male' | 'female' | 'unknown'
+    """
+    if not names:
+        return {}
+    
+    client = OpenAI(
+        api_key=settings.XAI_TOKEN,
+        base_url="https://api.x.ai/v1"
+    )
+    
+    prompt = f"""For each name below, determine the most likely gender based on the name. 
+This is for assigning appropriate voice actors (male/female voices) for a debate simulation.
+
+Names to analyze:
+{json.dumps(names, indent=2)}
+
+Return ONLY a JSON object mapping each name to "male", "female", or "unknown" (for organizations, unclear names, etc).
+Example: {{"John Smith": "male", "Sarah Connor": "female", "OpenAI": "unknown"}}
+
+JSON response:"""
+
+    response = client.chat.completions.create(
+        model="grok-4-1-fast-non-reasoning",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.1,
+        response_format={"type": "json_object"},
+    )
+    
+    try:
+        result = json.loads(response.choices[0].message.content)
+        # Normalize values to lowercase
+        return {name: gender.lower() for name, gender in result.items()}
+    except (json.JSONDecodeError, AttributeError):
+        # Fallback: return unknown for all
+        return {name: "unknown" for name in names}
+
+
 async def generate_ai_bio_handle(handle: str):
     """
     Generate a short AI-powered bio of an X (Twitter) account based on their profile and recent activity.
