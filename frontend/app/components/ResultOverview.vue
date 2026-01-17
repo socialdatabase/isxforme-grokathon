@@ -14,14 +14,13 @@
       </section>
 
       <!-- Accounts to Follow -->
-      <section v-if="accounts.length > 0" class="card">
-        <h2 class="section-title">
+      <section v-if="accounts.length > 0" class="visual-highligts relative max-h-200 scrollbar-none overflow-scroll">
+        <h2 class="section-title  m-0! p-6! top-0 sticky z-10 bg-blur">
           <span class="title-bar"></span>
           Accounts to follow
         </h2>
-        <div class="accounts-grid">
-        <div class="accounts-list">
-          <div v-for="account in accountsLeft" :key="account.handle" class="account-item">
+        <div class="px-6! pb-6! accounts-grid">
+          <div v-for="account in accounts" :key="account.handle" class="account-item">
             <div class="account-avatar">
               <img :src="account.avatar" :alt="account.name" />
             </div>
@@ -35,47 +34,27 @@
               <div class="account-handle">@{{ account.handle }} <span class="separator">|</span> <span class="account-followers">{{ account.followers }}</span></div>
             </div>
           </div>
-        </div>
-        <div class="accounts-list">
-          <div v-for="account in accountsRight" :key="account.handle" class="account-item">
-            <div class="account-avatar">
-              <img :src="account.avatar" :alt="account.name" />
-            </div>
-            <div class="account-info">
-              <div class="account-name">
-                {{ account.name }}
-                <svg v-if="account.verified" class="verified-badge" width="16" height="16" viewBox="0 0 24 24" fill="#1d9bf0">
-                  <path d="M22.5 12.5c0-1.58-.875-2.95-2.148-3.6.154-.435.238-.905.238-1.4 0-2.21-1.71-3.998-3.818-3.998-.47 0-.92.084-1.336.25C14.818 2.415 13.51 1.5 12 1.5s-2.816.917-3.437 2.25c-.415-.165-.866-.25-1.336-.25-2.11 0-3.818 1.79-3.818 4 0 .494.083.964.237 1.4-1.272.65-2.147 2.018-2.147 3.6 0 1.495.782 2.798 1.942 3.486-.02.17-.032.34-.032.514 0 2.21 1.708 4 3.818 4 .47 0 .92-.086 1.335-.25.62 1.334 1.926 2.25 3.437 2.25 1.512 0 2.818-.916 3.437-2.25.415.163.865.248 1.336.248 2.11 0 3.818-1.79 3.818-4 0-.174-.012-.344-.033-.513 1.158-.687 1.943-1.99 1.943-3.484zm-6.616-3.334l-4.334 6.5c-.145.217-.382.334-.625.334-.143 0-.288-.04-.416-.126l-.115-.094-2.415-2.415c-.293-.293-.293-.768 0-1.06s.768-.294 1.06 0l1.77 1.767 3.825-5.74c.23-.345.696-.436 1.04-.207.346.23.44.696.21 1.04z"/>
-                </svg>
-              </div>
-              <div class="account-handle">@{{ account.handle }} <span class="separator">|</span> <span class="account-followers">{{ account.followers }}</span></div>
-            </div>
-          </div>
-        </div>
       </div>
     </section>
 
     <!-- Visual Highlights -->
-    <section v-if="images.length > 0" class="card">
-      <h2 class="section-title">
+    <section class="visual-highligts relative max-h-200 scrollbar-none overflow-scroll">
+      <h2 class="section-title m-0! p-6! top-0 sticky z-10 bg-blur">
         <span class="title-bar"></span>
         Visual highlights from X
         <span v-if="imagesLoading" class="loading-indicator">Loading...</span>
+        
       </h2>
-      <div class="image-grid">
-        <div 
-          v-for="(img, idx) in images" 
-          :key="idx" 
-          class="grid-item" 
-          :class="[img.size, { 'image-error': img.error }]"
-        >
-          <img 
-            :src="img.url" 
-            :alt="`Highlight ${Number(idx) + 1}`"
-            @error="handleImageError(idx)"
+      <div class="px-6! pb-6! columns-1 sm:columns-2 lg:columns-3 gap-4">
+          <img
+            v-for="(image, index) in images"
+            :key="index"
+            :src="image.url"
+            alt="Visual highlight"
+            class="w-full mb-4! rounded-md break-inside-avoid"
+            loading="lazy"
           />
         </div>
-      </div>
     </section>
 
     <!-- Join Conversation CTA -->
@@ -134,6 +113,8 @@
 </template>
 
 <script setup lang="ts">
+import VisualHighlights from './VisualHighlights.vue';
+
 const config = useRuntimeConfig()
 
 const props = defineProps<{
@@ -217,20 +198,6 @@ interface TweetDisplay {
   views: string
 }
 const tweets = ref<TweetDisplay[]>([])
-
-// Fallback F1 accounts (used when API fails or for F1 keyword)
-const fallbackF1Accounts = [
-  { name: 'Formula 1', handle: 'F1', followers: '11.7M', verified: true, avatar: 'https://www.gtplanet.net/wp-content/uploads/2017/11/F1-2018-Logo.jpg' },
-  { name: 'Lewis Hamilton', handle: 'LewisHamilton', followers: '8.3M', verified: true, avatar: 'https://pbs.twimg.com/profile_images/1874472051517296640/anm3Q000_400x400.jpg' },
-  { name: 'Max Verstappen', handle: 'Max33Verstappen', followers: '4.1M', verified: true, avatar: 'https://pbs.twimg.com/profile_images/1759865143410765824/5B64vpgr_400x400.jpg' },
-  { name: 'McLaren', handle: 'McLarenF1', followers: '4.4M', verified: true, avatar: 'https://pbs.twimg.com/profile_images/2009686309229441024/YAoyori-_400x400.jpg' },
-  { name: 'Mercedes-AMG F1', handle: 'MercedesAMGF1', followers: '7.2M', verified: true, avatar: 'https://pbs.twimg.com/profile_images/2006665433651290112/bZZ9Ywke_400x400.jpg' },
-  { name: 'Scuderia Ferrari', handle: 'ScuderiaFerrari', followers: '6.8M', verified: true, avatar: 'https://pbs.twimg.com/profile_images/947659786555940865/P5eYYYIx_400x400.jpg' },
-  { name: 'Red Bull Racing', handle: 'redbullracing', followers: '5.9M', verified: true, avatar: 'https://pbs.twimg.com/profile_images/2006634351702810624/dl-eH03X_400x400.jpg' },
-  { name: 'Daniel Ricciardo', handle: 'danielricciardo', followers: '3.2M', verified: true, avatar: 'https://pbs.twimg.com/profile_images/1595403026789023746/BhuqlZx8_400x400.jpg' },
-  { name: 'Charles Leclerc', handle: 'Charles_Leclerc', followers: '2.9M', verified: true, avatar: 'https://pbs.twimg.com/profile_images/1276567411240681472/8KdXHFdK_400x400.jpg' },
-  { name: 'Lando Norris', handle: 'LandoNorris', followers: '3.5M', verified: true, avatar: 'https://pbs.twimg.com/profile_images/1752288661746454529/uAS75ARP_400x400.jpg' },
-]
 
 // Fallback F1 images (used when API fails or for F1 keyword)
 const fallbackF1Images: ImageDisplay[] = [
@@ -363,8 +330,8 @@ const fetchImages = async (ids: string[]) => {
       }
       
       if (mediaUrls.length > 0) {
-        // Assign sizes and limit to 12 images
-        images.value = assignImageSizes(mediaUrls.slice(0, 12))
+        // Assign sizes and limit to 50 images
+        images.value = assignImageSizes(mediaUrls.slice(0, 50))
       } else {
         // No media found, keep fallback
         images.value = fallbackF1Images
@@ -413,7 +380,7 @@ const fetchAccounts = async (keyword: string) => {
     }
 
     // Take first 10 IDs for size calculation and images
-    const idsForSizeAndImages = idsResponse.ids.slice(0, 10)
+    const idsForSizeAndImages = idsResponse.ids.slice(0, 20)
     
     // Take more IDs for accounts (for scrollable list)
     // Request 50 to show a good scrollable list
@@ -421,7 +388,7 @@ const fetchAccounts = async (keyword: string) => {
 
     // Fetch community size and images with top 10 IDs (in parallel with accounts)
     fetchCommunitySize(idsForSizeAndImages)
-    fetchImages(idsForSizeAndImages)
+    fetchImages(idsForAccounts)
 
     // Step 2: Fetch account details
     const idsParams = idsForAccounts.map((id: string) => `ids=${id}`).join('&')
@@ -446,15 +413,6 @@ const fetchAccounts = async (keyword: string) => {
     loading.value = false
   }
 }
-
-// Computed properties for left/right columns (alternating for row-first order)
-// Left column gets odd positions (1, 3, 5, 7...), Right gets even (2, 4, 6, 8...)
-const accountsLeft = computed(() => {
-  return accounts.value.filter((_, index) => index % 2 === 0)
-})
-const accountsRight = computed(() => {
-  return accounts.value.filter((_, index) => index % 2 === 1)
-})
 
 // Fetch on mount and when keyword changes
 watch(() => props.keyword, (newKeyword: string) => {
@@ -552,6 +510,14 @@ watch(() => props.keyword, (newKeyword: string) => {
   padding: 1.5rem;
 }
 
+.visual-highligts {
+  max-width: 800px;
+  margin: 0 auto 2rem;
+  background-color: #16181c;
+  border-radius: 16px;
+  border: 1px solid #2f3336;
+}
+
 .section-title {
   display: flex;
   align-items: center;
@@ -573,9 +539,8 @@ watch(() => props.keyword, (newKeyword: string) => {
 .accounts-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 1.5rem;
+  gap: 0.5rem;
   max-height: 320px;
-  overflow-y: auto;
   padding-right: 0.5rem;
 }
 
