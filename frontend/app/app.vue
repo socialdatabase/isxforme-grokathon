@@ -7,6 +7,7 @@
 </template>
 
 <script setup lang="ts">
+  /*
 useSeoMeta({
   title: 'Is X for me? ', 
   description: 'Check if your interests are active on X.',
@@ -26,4 +27,6 @@ useSeoMeta({
   twitterImage: 'https://www.isxforme.com/img/og-image.png',
   twitterCard: 'summary_large_image',
 })
+*/
+
 </script>
