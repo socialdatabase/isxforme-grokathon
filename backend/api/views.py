@@ -777,3 +777,85 @@ class GrokathonViewSet(viewsets.GenericViewSet):
         
         result = generate_newspaper_articles(keyword, posts)
         return Response(result)
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="generate-podcast-script",
+        url_name="generate-podcast-script",
+    )
+    def generate_podcast_script(self, request):
+        """
+        Generate a podcast-style script from timeline posts using Grok.
+        
+        POST body (JSON):
+        - keyword: The topic/keyword for the podcast
+        - posts: List of post objects with author, username, text, likes, retweets
+        
+        Returns JSON with the podcast script.
+        """
+        from openai import OpenAI
+        from django.conf import settings
+        import json as json_module
+        
+        data = request.data
+        
+        keyword = data.get("keyword")
+        posts = data.get("posts", [])
+        
+        if not keyword:
+            return Response(
+                {"error": "Missing required parameter: keyword"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not posts:
+            return Response(
+                {"error": "Missing required parameter: posts"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Generate podcast script using Grok
+        client = OpenAI(
+            api_key=settings.XAI_TOKEN,
+            base_url="https://api.x.ai/v1"
+        )
+        
+        prompt = f"""You are a podcast host creating an engaging audio summary of the latest social media discussions about "{keyword}".
+
+Based on these recent posts from experts and thought leaders:
+{json_module.dumps(posts, indent=2)}
+
+Create a natural, conversational podcast script that:
+1. Opens with a brief, energetic introduction welcoming listeners to the show
+2. Summarizes the key themes and discussions happening around "{keyword}"
+3. Highlights 2-3 interesting perspectives or insights from specific users (mention them by name)
+4. Includes natural transitions between topics
+5. Ends with a brief wrap-up and sign-off
+
+IMPORTANT GUIDELINES:
+- Write in a conversational, podcast-friendly tone (as if speaking naturally)
+- Keep it concise - aim for about 60-90 seconds of speaking time (roughly 150-200 words)
+- Don't use hashtags, URLs, or @ symbols - just mention people by their display name
+- Add natural pauses with commas and periods
+- Don't include stage directions or sound effect notes
+- Make it sound like a real person talking, not reading
+
+Start directly with the script text, no meta-commentary."""
+
+        try:
+            response = client.chat.completions.create(
+                model="grok-4-1-fast-non-reasoning",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+            )
+            
+            script = response.choices[0].message.content
+            
+            return Response({"script": script})
+            
+        except Exception as e:
+            return Response(
+                {"error": f"Failed to generate podcast script: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

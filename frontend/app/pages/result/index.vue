@@ -46,16 +46,20 @@
             <button 
               v-if="activeTab === 'timeline'"
               class="podcast-btn"
-              :class="{ active: podcastMode }"
+              :class="{ active: podcastMode, loading: podcastLoading }"
+              :disabled="podcastLoading"
               @click="podcastMode = !podcastMode"
             >
-              <span class="podcast-label hidden sm:flex">{{ podcastMode ? 'Playing' : 'Podcast' }}</span>
-              <div class="sound-waves" :class="{ playing: podcastMode }">
-                <span class="wave"></span>
-                <span class="wave"></span>
-                <span class="wave"></span>
-                <span class="wave"></span>
-              </div>
+              <div v-if="podcastLoading" class="podcast-spinner"></div>
+              <template v-else>
+                <span class="podcast-label hidden sm:flex">{{ podcastMode ? 'Pause' : 'Podcast' }}</span>
+                <div class="sound-waves" :class="{ playing: podcastMode }">
+                  <span class="wave"></span>
+                  <span class="wave"></span>
+                  <span class="wave"></span>
+                  <span class="wave"></span>
+                </div>
+              </template>
             </button>
           </div>
           <BaseTabs v-model="activeTabUi" />
@@ -70,7 +74,13 @@
 
     <!-- Timeline Tab Content (use v-show for preloading) -->
     <div v-show="activeTab === 'timeline'" class="tab-content">
-      <ResultTimeline :keyword="searchKeyword" @open-newspaper="openNewspaper" />
+      <ResultTimeline 
+        ref="timelineRef"
+        :keyword="searchKeyword" 
+        :podcast-mode="podcastMode"
+        @open-newspaper="openNewspaper"
+        @podcast-state-change="(playing: boolean, loading: boolean) => { podcastMode = playing; podcastLoading = loading }"
+      />
     </div>
 
     <!-- Index Tab Content (use v-show for preloading) -->
@@ -144,6 +154,7 @@ const selectedAccount = ref<SelectedAccountData | null>(null)
 const searchKeyword = ref('') // Start empty, will be set from query
 const searchInput = ref('') // Input field value
 const podcastMode = ref(false)
+const podcastLoading = ref(false)
 const showNewspaper = ref(false)
 
 watch(activeTabUi, () => {
@@ -625,6 +636,30 @@ definePageMeta({
   background-color: #fff;
   border-color: #fff;
   color: #000;
+}
+
+.podcast-btn.loading {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.podcast-btn:disabled {
+  cursor: wait;
+}
+
+.podcast-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #1d9bf0;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .podcast-label {

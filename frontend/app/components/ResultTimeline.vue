@@ -102,6 +102,7 @@
           <span class="grok-times-text">The Grok Times</span>
           <span class="grok-times-subtitle">AI-generated newspaper</span>
         </button>
+        
       </div>
     </div>
   </div>
@@ -112,10 +113,12 @@ const config = useRuntimeConfig()
 
 const props = defineProps<{
   keyword: string
+  podcastMode?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'open-newspaper'): void
+  (e: 'podcast-state-change', playing: boolean, loading: boolean): void
 }>()
 
 // Types
@@ -179,6 +182,150 @@ interface ApiPost {
 const currentTopic = ref('F1')
 const loading = ref(false)
 const loadingPosts = ref(false)
+
+// Podcast state
+const isPodcastPlaying = ref(false)
+const isPodcastLoading = ref(false)
+const podcastAudio = ref<HTMLAudioElement | null>(null)
+const podcastScript = ref('')
+
+const podcastButtonText = computed(() => {
+  if (isPodcastLoading.value) return 'Generating...'
+  if (isPodcastPlaying.value) return 'Pause Podcast'
+  return 'Listen to Podcast'
+})
+
+const podcastSubtitle = computed(() => {
+  if (isPodcastLoading.value) return 'Creating audio summary'
+  if (isPodcastPlaying.value) return 'AI-narrated timeline'
+  return 'AI-narrated summary'
+})
+
+// Toggle podcast play/pause
+const togglePodcast = async () => {
+  console.log('Podcast button clicked!', { 
+    isPlaying: isPodcastPlaying.value, 
+    hasAudio: !!podcastAudio.value,
+    tweetsCount: timelineTweets.value.length 
+  })
+  
+  // If already playing, pause
+  if (isPodcastPlaying.value && podcastAudio.value) {
+    podcastAudio.value.pause()
+    isPodcastPlaying.value = false
+    return
+  }
+  
+  // If we have cached audio, resume
+  if (podcastAudio.value && podcastAudio.value.src) {
+    podcastAudio.value.play()
+    isPodcastPlaying.value = true
+    return
+  }
+  
+  // Generate new podcast
+  await generatePodcast()
+}
+
+// Generate podcast from timeline
+const generatePodcast = async () => {
+  if (timelineTweets.value.length === 0) return
+  
+  isPodcastLoading.value = true
+  
+  try {
+    // Step 1: Prepare posts context for Grok
+    const postsContext = timelineTweets.value.slice(0, 15).map((tweet: TimelineTweet) => ({
+      author: tweet.displayName,
+      username: tweet.username,
+      text: tweet.text,
+      likes: tweet.likes,
+      retweets: tweet.retweets
+    }))
+    
+    // Step 2: Generate podcast script using Grok
+    const keyword = props.keyword || currentTopic.value || 'trending topics'
+    console.log('Generating podcast for:', keyword, 'with', postsContext.length, 'posts')
+    
+    const scriptResponse = await fetch(`${config.public.apiBase}/grokathon/generate-podcast-script/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        keyword: keyword,
+        posts: postsContext
+      })
+    })
+    
+    if (!scriptResponse.ok) {
+      const errText = await scriptResponse.text()
+      console.error('Script generation failed:', scriptResponse.status, errText)
+      throw new Error('Failed to generate podcast script')
+    }
+    
+    const scriptData = await scriptResponse.json()
+    podcastScript.value = scriptData.script
+    console.log('Generated script:', podcastScript.value.substring(0, 100) + '...')
+    
+    // Step 3: Convert script to speech using xAI TTS
+    console.log('Converting to speech...')
+    const ttsResponse = await fetch(`${config.public.apiBase}/grokathon/xai-text-to-speech/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: podcastScript.value,
+        voice: 'rex' // Using Rex voice for podcast-style narration
+      })
+    })
+    
+    if (!ttsResponse.ok) {
+      const errText = await ttsResponse.text()
+      console.error('TTS failed:', ttsResponse.status, errText)
+      throw new Error('Failed to generate audio')
+    }
+    
+    console.log('TTS successful, creating audio element...')
+    
+    // Step 4: Create audio element and play
+    const audioBlob = await ttsResponse.blob()
+    const audioUrl = URL.createObjectURL(audioBlob)
+    
+    // Clean up previous audio if exists
+    if (podcastAudio.value) {
+      podcastAudio.value.pause()
+      URL.revokeObjectURL(podcastAudio.value.src)
+    }
+    
+    podcastAudio.value = new Audio(audioUrl)
+    
+    // Set up event listeners
+    podcastAudio.value.onended = () => {
+      isPodcastPlaying.value = false
+    }
+    
+    podcastAudio.value.onerror = () => {
+      console.error('Audio playback error')
+      isPodcastPlaying.value = false
+    }
+    
+    // Play the audio
+    await podcastAudio.value.play()
+    isPodcastPlaying.value = true
+    
+  } catch (error) {
+    console.error('Error generating podcast:', error)
+    alert('Failed to generate podcast. Please try again.')
+  } finally {
+    isPodcastLoading.value = false
+  }
+}
+
+// Clean up audio on unmount
+onUnmounted(() => {
+  if (podcastAudio.value) {
+    podcastAudio.value.pause()
+    URL.revokeObjectURL(podcastAudio.value.src)
+  }
+})
 
 const formatNumber = (num: number): string => {
   if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M'
@@ -343,8 +490,38 @@ watch(() => props.keyword, (newKeyword: string) => {
   if (newKeyword) {
     fetchAccounts(newKeyword)
     fetchPosts(newKeyword)
+    
+    // Reset podcast when topic changes
+    if (podcastAudio.value) {
+      podcastAudio.value.pause()
+      URL.revokeObjectURL(podcastAudio.value.src)
+      podcastAudio.value = null
+    }
+    isPodcastPlaying.value = false
+    podcastScript.value = ''
   }
 }, { immediate: true })
+
+// Watch for podcast mode changes from parent
+watch(() => props.podcastMode, async (newMode: boolean | undefined) => {
+  console.log('Podcast mode changed:', newMode)
+  
+  if (newMode && !isPodcastPlaying.value) {
+    // Start podcast
+    await togglePodcast()
+  } else if (!newMode && isPodcastPlaying.value) {
+    // Stop podcast
+    if (podcastAudio.value) {
+      podcastAudio.value.pause()
+      isPodcastPlaying.value = false
+    }
+  }
+})
+
+// Emit state changes to parent
+watch([isPodcastPlaying, isPodcastLoading], ([playing, loading]) => {
+  emit('podcast-state-change', playing, loading)
+})
 </script>
 
 <style scoped>
@@ -811,6 +988,119 @@ watch(() => props.keyword, (newKeyword: string) => {
   font-size: 0.7rem;
   color: #71767b;
   font-weight: 400;
+}
+
+/* Podcast Button */
+.podcast-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  width: 100%;
+  padding: 1rem;
+  margin-top: 0.75rem;
+  background: linear-gradient(135deg, #1a1520 0%, #2a2030 100%);
+  border: 1px solid #3d3040;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #e7e9ea;
+}
+
+.podcast-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2a2030 0%, #3d3040 100%);
+  border-color: #4d4050;
+  transform: translateY(-1px);
+}
+
+.podcast-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.podcast-btn.playing {
+  background: linear-gradient(135deg, #1d3a1d 0%, #2d4a2d 100%);
+  border-color: #3d5a3d;
+}
+
+.podcast-btn.loading {
+  background: linear-gradient(135deg, #1a2530 0%, #2a3540 100%);
+  border-color: #3d4550;
+}
+
+.podcast-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #1d9bf0;
+  border-radius: 50%;
+  animation: podcast-spin 0.8s linear infinite;
+}
+
+@keyframes podcast-spin {
+  to { transform: rotate(360deg); }
+}
+
+.podcast-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  margin-bottom: 0.25rem;
+}
+
+.podcast-btn.playing .podcast-icon {
+  background-color: rgba(0, 186, 124, 0.2);
+  color: #00ba7c;
+}
+
+.podcast-text {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e7e9ea;
+}
+
+.podcast-subtitle {
+  font-size: 0.7rem;
+  color: #71767b;
+  font-weight: 400;
+}
+
+/* Audio Visualizer */
+.audio-visualizer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 32px;
+  margin-top: 0.75rem;
+  padding: 0.5rem;
+  background-color: rgba(0, 186, 124, 0.1);
+  border-radius: 8px;
+}
+
+.viz-bar {
+  width: 4px;
+  background-color: #00ba7c;
+  border-radius: 2px;
+  animation: viz-bounce 1s ease-in-out infinite;
+}
+
+.viz-bar:nth-child(1) { height: 40%; animation-delay: 0s; }
+.viz-bar:nth-child(2) { height: 70%; animation-delay: 0.1s; }
+.viz-bar:nth-child(3) { height: 100%; animation-delay: 0.15s; }
+.viz-bar:nth-child(4) { height: 60%; animation-delay: 0.2s; }
+.viz-bar:nth-child(5) { height: 90%; animation-delay: 0.25s; }
+.viz-bar:nth-child(6) { height: 50%; animation-delay: 0.3s; }
+.viz-bar:nth-child(7) { height: 80%; animation-delay: 0.35s; }
+.viz-bar:nth-child(8) { height: 45%; animation-delay: 0.4s; }
+
+@keyframes viz-bounce {
+  0%, 100% { transform: scaleY(0.5); }
+  50% { transform: scaleY(1); }
 }
 
 /* Responsive */
