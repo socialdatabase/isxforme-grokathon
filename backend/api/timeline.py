@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from openai import OpenAI
 import json
 import time
+from users.models import Search
 
 BASE_URL_SDB = "https://api.socialdatabase.com"
 
@@ -93,11 +94,13 @@ def fetch_topics():
 
 
 def infer_topic_in_query(input_query: str):
+    params = analyze_query(input_query)
     _, all_topics = fetch_topics()
     input_query = input_query.lower()
-    for topic in all_topics:
-        if topic in input_query:
-            return topic
+    for keyword in params.get("keywords"):
+        for topic in all_topics:
+            if keyword == topic:
+                return topic
     return None
 
 
@@ -117,11 +120,14 @@ def fetch_grokathon_ids(input_query: str):
         "Authorization": f"Token {settings.SOCIAL_DATABASE_TOKEN}",
         "Content-Type": "application/json"
     }
+    search_instance = Search.objects.create(query=input_query, keywords=params.get("keywords"), countries=params.get("countries"), query_type=params.get("query_type"))
 
     resp = requests.get(url, headers=headers, params=params)
     resp.raise_for_status()
     resp_data = resp.json()
     ids = resp_data.get("ids", [])
+    search_instance.size = len(ids)
+    search_instance.save()
     print(f"Time taken to fetch ids: {time.time() - start_time} seconds")
     ids = [str(account_id) for account_id in ids]
     return ids
