@@ -19,8 +19,6 @@ from api.serializers import (
     GetAccountsWithRanksSerializer,
     FetchTopicsRanksHandleSerializer,
     FetchExpertCategoriesSerializer,
-    TextToSpeechSerializer,
-    SpeechToTextSerializer,
     FetchPostsTimelineSerializer,
     XaiTextToSpeechSerializer,
     XaiSpeechToTextSerializer,
@@ -586,92 +584,6 @@ class GrokathonViewSet(viewsets.GenericViewSet):
         response['Cache-Control'] = 'no-cache'
         response['X-Accel-Buffering'] = 'no'  # Disable buffering in nginx
         return response
-
-    @action(
-        detail=False,
-        methods=["post", "get"],
-        serializer_class=TextToSpeechSerializer,
-        filter_backends=[QueryFilter],
-        query_filters=["text"],
-        url_path="text-to-speech",
-        url_name="text-to-speech",
-    )
-    def text_to_speech(self, request):
-        """
-        Convert text to speech.
-        
-        Query parameters (GET) or body (POST):
-        - text: The text to convert to speech
-        
-        Returns an audio file (MP3 format).
-        """
-        # Support both GET and POST
-        if request.method == 'GET':
-            text = request.GET.get("text")
-        else:
-            text = request.data.get("text") or request.GET.get("text")
-        
-        if not text:
-            return Response(
-                {"error": "Missing required parameter: text"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        serializer = TextToSpeechSerializer(data={"text": text})
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        
-        audio_content = serializer.instance.get("audio")
-        
-        if not audio_content:
-            return Response(
-                {"error": "Failed to generate speech"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-        
-        # Return audio file as response
-        response = HttpResponse(audio_content, content_type='audio/mpeg')
-        response['Content-Disposition'] = 'inline; filename="speech.mp3"'
-        response['Content-Length'] = len(audio_content)
-        return response
-
-    @action(
-        detail=False,
-        methods=["post", "get"],
-        serializer_class=SpeechToTextSerializer,
-        filter_backends=[QueryFilter],
-        query_filters=["audio"],
-        url_path="speech-to-text",
-        url_name="speech-to-text",
-    )
-    def speech_to_text(self, request):
-        """
-        Convert speech to text.
-        
-        POST request with multipart/form-data:
-        - audio: The audio file to convert to text (file upload)
-        
-        Returns a text response.
-        """
-        # File uploads must use POST with multipart/form-data
-        if request.method != 'POST':
-            return Response(
-                {"error": "This endpoint only accepts POST requests with file upload"},
-                status=status.HTTP_405_METHOD_NOT_ALLOWED
-            )
-        
-        audio_file = request.FILES.get("audio")
-        
-        if not audio_file:
-            return Response(
-                {"error": "Missing required file: audio"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        serializer = SpeechToTextSerializer(data={"audio": audio_file})
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
 
     # ==================== xAI Voice API Endpoints ====================
     

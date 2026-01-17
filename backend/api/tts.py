@@ -125,7 +125,7 @@ def test():
     
     asyncio.run(
         test_tts_websocket(
-            args.uri,
+            "wss://api.x.ai/v1/realtime/audio/speech",
             text,
             args.output,
         )

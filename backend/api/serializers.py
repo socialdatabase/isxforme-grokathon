@@ -15,8 +15,6 @@ from api.timeline import (
 )
 from api.groksignal import (
     extract_expert_categories,
-    text_to_speech,
-    speech_to_text,
 )
 from api.voicethomas import (
     text_to_speech as xai_text_to_speech,
@@ -238,28 +236,6 @@ class FetchExpertCategoriesSerializer(serializers.Serializer):
         ids = self.validated_data.get('ids')
         categories = extract_expert_categories(ids)
         self.instance = {"categories": categories}
-        return self.instance
-
-
-class TextToSpeechSerializer(serializers.Serializer):
-    # Double-check if Grok TTS has max_length
-    text = serializers.CharField(write_only=True, max_length=20000)
-    
-    def save(self, **kwargs):
-        text = self.validated_data.get('text')
-        audio_content = text_to_speech(text)
-        self.instance = {"audio": audio_content}
-        return self.instance
-
-
-class SpeechToTextSerializer(serializers.Serializer):
-    audio = serializers.FileField(write_only=True)
-    text = serializers.CharField(read_only=True)
-
-    def save(self, **kwargs):
-        audio = self.validated_data.get('audio')
-        text = speech_to_text(audio)
-        self.instance = {"text": text}
         return self.instance
 
 
