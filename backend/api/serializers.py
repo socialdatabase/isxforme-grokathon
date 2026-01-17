@@ -8,6 +8,8 @@ from api.timeline import (
     fetch_ids_handle_topics, 
     fetch_topics_and_ranks_ids, 
     fetch_topics_ranks_handle,
+    fetch_topics,
+    infer_topic_in_query,
 )
 from api.groksignal import (
     extract_expert_categories,
@@ -118,6 +120,26 @@ class FetchGrokathonSizeSerializer(serializers.Serializer):
         ids = self.validated_data.get('ids')
         size = fetch_grokathon_size(ids)
         self.instance = {"size": size}
+        return self.instance
+
+
+class FetchTopicsSerializer(serializers.Serializer):
+    topics = serializers.ListField(child=serializers.CharField(), read_only=True)
+
+    def save(self, **kwargs):
+        topics, _ = fetch_topics()
+        self.instance = {"topics": topics}
+        return self.instance
+
+
+class InferTopicInQuerySerializer(serializers.Serializer):
+    input_query = serializers.CharField(write_only=True)
+    topic = serializers.CharField(read_only=True)
+
+    def save(self, **kwargs):
+        input_query = self.validated_data.get('input_query')
+        topic = infer_topic_in_query(input_query)
+        self.instance = {"topic": topic}
         return self.instance
 
 

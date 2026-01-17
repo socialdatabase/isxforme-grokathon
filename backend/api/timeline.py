@@ -14,6 +14,7 @@ def chunks(input_list, end, start=0):
         yield input_list[start_index : start_index + end]
 
 
+
 def analyze_query(input_query: str):    
     # Initialize OpenAI client for xAI API
     client = OpenAI(
@@ -78,6 +79,26 @@ def analyze_query(input_query: str):
             "countries": None,
             "plan_type": "interest"
         }
+
+
+def fetch_topics():
+    url = f"{BASE_URL_SDB}/api/external/bigdipper/fetch-topics-grokathon/"
+    headers = {"Authorization": f"Token {settings.SOCIAL_DATABASE_TOKEN}", "Content-Type": "application/json"}
+    resp = requests.get(url, headers=headers)
+    resp.raise_for_status()
+    resp_data = resp.json()
+    topics = resp_data.get("topics", [])
+    all_topics = resp_data.get("all_topics", [])
+    return topics, all_topics
+
+
+def infer_topic_in_query(input_query: str):
+    _, all_topics = fetch_topics()
+    input_query = input_query.lower()
+    for topic in all_topics:
+        if topic in input_query:
+            return topic
+    return None
 
 
 def fetch_grokathon_ids(input_query: str):
