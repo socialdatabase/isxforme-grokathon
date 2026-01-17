@@ -20,7 +20,7 @@ from api.serializers import (
     SpeechToTextSerializer,
 )
 from api.core import QueryFilter
-from api.groksignal import get_expert_category_perspective
+from api.groksignal import get_expert_category_perspective, get_expert_overview
 from api.newspaper import generate_newspaper_articles
 
 
@@ -283,6 +283,68 @@ class GrokathonViewSet(viewsets.GenericViewSet):
             """Convert async generator to sync generator for StreamingHttpResponse"""
             async def run_stream():
                 async for chunk in get_expert_category_perspective(input_query, expert_category, ids):
+                    yield chunk
+            
+            # Create a new event loop for this thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            try:
+                # Run the async generator
+                async_gen = run_stream()
+                while True:
+                    try:
+                        chunk = loop.run_until_complete(async_gen.__anext__())
+                        # StreamingHttpResponse expects bytes
+                        if isinstance(chunk, str):
+                            yield chunk.encode('utf-8')
+                        else:
+                            yield chunk
+                    except StopAsyncIteration:
+                        break
+            finally:
+                loop.close()
+        
+        response = StreamingHttpResponse(
+            stream_generator(),
+            content_type='text/plain; charset=utf-8'
+        )
+        response['Cache-Control'] = 'no-cache'
+        response['X-Accel-Buffering'] = 'no'  # Disable buffering in nginx
+        return response
+
+    @action(
+        detail=False,
+        methods=["get"],
+        filter_backends=[QueryFilter],
+        query_filters=["input_query", "ids"],
+        url_path="stream-expert-overview",
+        url_name="stream-expert-overview",
+    )
+    def stream_expert_overview(self, request):
+        """
+        Stream an overview of expert views on a given query.
+        This is the initial response when the user asks "What are the latest expert views on [topic]?"
+        
+        Query parameters:
+        - input_query: The user's query/topic of interest
+        - ids: List of account IDs to analyze (comma-separated or multiple)
+        
+        Returns a streaming text response.
+        """
+        input_query = request.GET.get("input_query")
+        ids = [int(id_val) for id_val in request.GET.getlist("ids") if id_val]
+        
+        if not input_query or not ids:
+            return Response(
+                {"error": "Missing required parameters: input_query and ids"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        def stream_generator():
+            """Convert async generator to sync generator for StreamingHttpResponse"""
+            async def run_stream():
+                async for chunk in get_expert_overview(input_query, ids):
                     yield chunk
             
             # Create a new event loop for this thread

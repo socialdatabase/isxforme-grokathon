@@ -59,7 +59,7 @@
 
         <!-- User Query -->
         <div class="grok-query">
-          <span class="grok-query-text">{{ selectedExpertView ? `What do ${selectedExpertView} think about F1?` : "What's the latest news in F1?" }}</span>
+          <span class="grok-query-text">{{ currentQuestion }}</span>
         </div>
 
         <!-- LLM Response -->
@@ -186,9 +186,8 @@ interface ApiPost {
 
 const entitiesOpen = ref(false)
 const sourcesOpen = ref(false)
-const isTyping = ref(true)
+const isTyping = ref(false)
 const displayedResponse = ref('')
-const typingIndex = ref(0)
 const grokFollowup = ref('')
 const selectedExpertView = ref<string | null>(null)
 const loadingEntities = ref(true)
@@ -196,6 +195,17 @@ const loadingCategories = ref(true)
 const loadingPosts = ref(true)
 const loadingFilteredPosts = ref(false)
 const totalEntitiesCount = ref(0)
+const loadingGrokResponse = ref(false)
+const grokResponseLoaded = ref(false)
+
+// Computed for dynamic question based on topic and selected expert view
+const currentQuestion = computed(() => {
+  const topic = props.keyword || 'F1'
+  if (selectedExpertView.value) {
+    return `What do ${selectedExpertView.value} think about ${topic}?`
+  }
+  return `What are the latest expert views on ${topic}?`
+})
 
 // Posts for "Content found on" section
 const allContentPosts = ref<ContentPost[]>([])
@@ -410,131 +420,88 @@ const formatNumber = (num: number): string => {
   return num.toString()
 }
 
-const grokFullResponse = `Here's the latest buzz in Formula 1 as we head into the <strong>2026 season</strong>—it's shaping up to be one of the most dramatic yet!
+// Stream the initial Grok overview response
+const streamGrokOverview = async (ids: string[]) => {
+  if (ids.length === 0 || grokResponseLoaded.value) return
+  
+  const keyword = props.keyword || 'F1'
+  loadingGrokResponse.value = true
+  isTyping.value = true
+  displayedResponse.value = ''
+  
+  try {
+    const idsParams = ids.slice(0, 50).map((id: string) => `ids=${id}`).join('&')
+    const url = `${config.public.apiBase}/grokathon/stream-expert-overview/?input_query=${encodeURIComponent(keyword)}&${idsParams}`
+    
+    const response = await fetch(url)
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('No response body')
+    }
+    
+    const decoder = new TextDecoder()
+    
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      
+      const chunk = decoder.decode(value, { stream: true })
+      displayedResponse.value += chunk
+    }
+    
+    grokResponseLoaded.value = true
+  } catch (err) {
+    console.error('Error streaming Grok overview:', err)
+    displayedResponse.value = 'Failed to load expert views. Please try again.'
+  } finally {
+    loadingGrokResponse.value = false
+    isTyping.value = false
+  }
+}
 
-<h4>2026 Car Launches & Testing</h4>
-The <strong>2026 season</strong> is just around the corner, and teams are already teasing their new machines. <strong>Audi</strong> made headlines by becoming the first team to run its <strong>2026 F1 car</strong> in a shakedown at Barcelona, giving fans a sneak peek at the radical new regulations. Meanwhile, <strong>Ferrari</strong> has revealed its 2026 challenger will be called the <strong>SF-26</strong>, and <strong>Cadillac</strong> (entering F1 with Andretti) has unveiled a special test livery to hide its design secrets.
-
-<h4>Driver Market Drama</h4>
-<ul>
-<li><strong>Alpine</strong> has parted ways with reserve driver <strong>Jack Doohan</strong> ahead of 2026, ending months of speculation after he lost his race seat.</li>
-<li><strong>Yuki Tsunoda's future</strong> is still uncertain—Honda has confirmed he hasn't signed a <strong>2026 Red Bull contract</strong> yet, with Ford's involvement complicating things.</li>
-<li><strong>Isack Hadjar</strong>, Red Bull's 2026 signing, is already making waves—he's taking on a <strong>rally-raid challenge in a Ford Raptor</strong> to prepare for his F1 debut!</li>
-</ul>
-
-<h4>Engine & Regulation Updates</h4>
-The FIA is holding emergency meetings with engine manufacturers to discuss a potential loophole in the 2026 power unit rules—<strong>Mercedes</strong> and <strong>Red Bull</strong> are reportedly under scrutiny.
-
-<strong>Honda</strong> has given a first glimpse of its 2026 F1 engine, which will power Aston Martin's new superteam with <strong>Adrian Newey</strong> at the helm.
-
-<strong>Ford</strong> has clarified its F1 timeline, insisting its partnership with Red Bull isn't just about Max Verstappen—though his future remains a hot topic.
-
-<h4>Team & Tech Developments</h4>
-<strong>McLaren</strong> has admitted mistakes in 2025 made them a "better team", with Zak Brown confident they'll carry momentum into 2026.
-
-<strong>Aston Martin</strong> is banking on Newey's genius, Honda power, and a new wind tunnel to challenge for the title—but some analysts question if they're truly ready.
-
-<strong>Williams</strong> isn't treating 2026 as a make-or-break year, preferring to focus on long-term progress rather than short-term results.
-
-<h4>Fun & Off-Track News</h4>
-<strong>Lewis Hamilton</strong> is switching up his training, trading his Ducati for a KTM dirt bike—apparently, mud-slinging is the new way to stay sharp!
-
-<strong>Brad Pitt</strong> praised Hamilton's role in the upcoming F1 movie, calling him the "consultant Hollywood needed."
-
-<strong>Lando Norris</strong> posted his first vlog since winning the 2025 title, thanking fans with an emotional message.
-
-<h4>What's Next?</h4>
-Pre-season testing kicks off in Barcelona (Feb 25-27), with all eyes on Audi, Ferrari, and Mercedes to see who's leading the pack.
-
-Car launches are happening thick and fast—expect Red Bull, McLaren, and Mercedes to reveal their 2026 challengers soon.
-
-The 2026 season is already shaping up to be a game-changer—new cars, new engines, and a completely reshuffled driver market. Who's your pick for the title? 🏆🚀`
-
-const expertResponses: Record<string, string> = {
-  'F1 Drivers': `From the drivers' perspective, 2026 is generating a mix of excitement and uncertainty.
-
-<h4>Driver Reactions</h4>
-<strong>Lewis Hamilton</strong> shared his thoughts on the new regulations:
-<blockquote>"The 2026 cars will be a completely different beast. The focus on sustainable fuels and the new aero philosophy will challenge everything we know."
-<a href="https://x.com/LewisHamilton" class="source-link">@LewisHamilton</a></blockquote>
-
-<strong>Max Verstappen</strong> has been more cautious:
-<blockquote>"I'm not worried about the changes, but it's hard to predict where everyone will be. Red Bull has a lot of work to do with the new engine partnership."
-<a href="https://x.com/Max33Verstappen" class="source-link">@Max33Verstappen</a></blockquote>
-
-<strong>Charles Leclerc</strong> is optimistic about Ferrari's chances:
-<blockquote>"The SF-26 name gives me goosebumps. 2026 is our year to fight for the championship."
-<a href="https://x.com/Charles_Leclerc" class="source-link">@Charles_Leclerc</a></blockquote>`,
-
-  'Team Principals': `Team principals are taking different approaches to the 2026 regulations.
-
-<h4>Team Leadership Views</h4>
-<strong>Toto Wolff</strong> (Mercedes) sees opportunity:
-<blockquote>"The regulation reset is exactly what we needed. Our 2026 power unit development has been our focus for two years."</blockquote>
-
-<strong>Christian Horner</strong> (Red Bull) acknowledges challenges:
-<blockquote>"Switching from Honda to Ford is a massive undertaking. But we've built a team capable of adapting quickly."</blockquote>
-
-<strong>Fred Vasseur</strong> (Ferrari) is confident:
-<blockquote>"The SF-26 will be the culmination of years of preparation. We have the right people in place."</blockquote>`,
-
-  'Journalists': `F1 journalists are analyzing every detail of the 2026 shakeup.
-
-<h4>Media Analysis</h4>
-<strong>Will Buxton</strong> offers perspective:
-<blockquote>"The 2026 regulations represent the biggest change in F1 since the turbo-hybrid era. Teams that adapt fastest will dominate."
-<a href="https://x.com/wbuxtonofficial" class="source-link">@wbuxtonofficial</a></blockquote>
-
-Key storylines journalists are following:
-<ul>
-<li>Audi's first full F1 entry and their Barcelona shakedown</li>
-<li>The engine manufacturer battles between Mercedes, Ferrari, Honda, and newcomers</li>
-<li>Driver market chaos with several top seats still uncertain</li>
-<li>Andretti/Cadillac's entry changing the competitive landscape</li>
-</ul>`,
-
-  'Engineers': `Engineers are deep into the technical challenges of 2026.
-
-<h4>Technical Perspectives</h4>
-The new regulations bring fundamental changes:
-<ul>
-<li><strong>Active Aero:</strong> Engineers are developing complex movable aerodynamic systems</li>
-<li><strong>Sustainable Fuels:</strong> 100% sustainable fuel requires complete powertrain redesigns</li>
-<li><strong>Simplified Front Wings:</strong> Less downforce dependency, more mechanical grip focus</li>
-<li><strong>Battery Technology:</strong> Increased energy recovery systems demand new solutions</li>
-</ul>
-
-Teams are hiring aggressively, with Aston Martin's new wind tunnel and Adrian Newey signing seen as major coups.`,
-
-  'Analysts': `Data analysts are crunching numbers on 2026 predictions.
-
-<h4>Statistical Predictions</h4>
-Based on historical regulation changes:
-<ul>
-<li><strong>Mercedes</strong> - 35% chance of winning constructors' (strong PU development)</li>
-<li><strong>Ferrari</strong> - 28% chance (best prepared chassis team)</li>
-<li><strong>Red Bull</strong> - 22% chance (new engine partnership risk)</li>
-<li><strong>McLaren</strong> - 10% chance (momentum from 2025)</li>
-<li><strong>Others</strong> - 5% combined</li>
-</ul>
-
-Key metrics to watch: Pre-season testing pace, reliability data, and early race performance.`,
-
-  'Fans': `The F1 fanbase is buzzing with excitement and speculation!
-
-<h4>Fan Sentiment</h4>
-Trending topics across F1 communities:
-<ul>
-<li>🔥 <strong>#SF26</strong> - Ferrari's car name reveal has fans hyped</li>
-<li>🏆 <strong>Hamilton to Ferrari</strong> - Dream move finally happening</li>
-<li>🆕 <strong>Audi F1</strong> - New team excitement is massive</li>
-<li>❓ <strong>Verstappen's future</strong> - Will he stay at Red Bull?</li>
-</ul>
-
-<blockquote>"2026 is going to be the most competitive season in years. Can't wait!" - Popular sentiment across X
-</blockquote>
-
-Fan polls show Ferrari as the most anticipated team reveal for 2026.`,
+// Stream the expert category perspective
+const streamExpertPerspective = async (category: string, ids: number[]) => {
+  if (ids.length === 0) return
+  
+  const keyword = props.keyword || 'F1'
+  isTyping.value = true
+  displayedResponse.value = ''
+  
+  try {
+    const idsParams = ids.slice(0, 50).map((id: number) => `ids=${id}`).join('&')
+    const url = `${config.public.apiBase}/grokathon/stream-expert-perspective/?input_query=${encodeURIComponent(keyword)}&expert_category=${encodeURIComponent(category)}&${idsParams}`
+    
+    const response = await fetch(url)
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('No response body')
+    }
+    
+    const decoder = new TextDecoder()
+    
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      
+      const chunk = decoder.decode(value, { stream: true })
+      displayedResponse.value += chunk
+    }
+  } catch (err) {
+    console.error('Error streaming expert perspective:', err)
+    displayedResponse.value = `Failed to load ${category} perspective. Please try again.`
+  } finally {
+    isTyping.value = false
+  }
 }
 
 const toggleEntities = () => {
@@ -630,21 +597,21 @@ const fetchCategoryPosts = async (categoryName: string) => {
 
 const selectExpertView = async (category: string) => {
   if (selectedExpertView.value === category) {
-    // Deselect - go back to showing all entities and posts
+    // Deselect - go back to showing all entities and posts with the overview response
     selectedExpertView.value = null
     filteredEntityAccounts.value = []
     filteredEntitiesCount.value = 0
     filteredContentPosts.value = []
-    displayedResponse.value = ''
-    typingIndex.value = 0
-    isTyping.value = true
-    setTimeout(typeResponse, 300)
+    
+    // Stream the overview response again
+    if (allEntityIds.value.length > 0) {
+      grokResponseLoaded.value = false // Allow re-fetching
+      await streamGrokOverview(allEntityIds.value)
+    }
   } else {
     // Select new category
     selectedExpertView.value = category
     displayedResponse.value = ''
-    typingIndex.value = 0
-    isTyping.value = true
     
     // Fetch accounts and posts for this category in parallel
     await Promise.all([
@@ -652,19 +619,11 @@ const selectExpertView = async (category: string) => {
       fetchCategoryPosts(category)
     ])
     
-    setTimeout(() => typeExpertResponse(category), 300)
-  }
-}
-
-const typeExpertResponse = (category: string) => {
-  const response = expertResponses[category] || ''
-  if (typingIndex.value < response.length) {
-    const chunkSize = 5
-    displayedResponse.value = response.slice(0, typingIndex.value + chunkSize)
-    typingIndex.value += chunkSize
-    setTimeout(() => typeExpertResponse(category), 8)
-  } else {
-    isTyping.value = false
+    // Stream the expert category perspective
+    const selectedCategory = expertCategories.value.find((c: ExpertCategory) => c.name === category)
+    if (selectedCategory && selectedCategory.ids.length > 0) {
+      await streamExpertPerspective(category, selectedCategory.ids)
+    }
   }
 }
 
@@ -675,33 +634,19 @@ const handleFollowup = () => {
   }
 }
 
-const typeResponse = () => {
-  if (typingIndex.value < grokFullResponse.length) {
-    const chunkSize = 3
-    displayedResponse.value = grokFullResponse.slice(0, typingIndex.value + chunkSize)
-    typingIndex.value += chunkSize
-    setTimeout(typeResponse, 10)
-  } else {
-    isTyping.value = false
-  }
-}
-
 // Track the last fetched keyword to avoid re-fetching the same data
 const lastFetchedKeyword = ref<string | null>(null)
 
-// Start typing animation when component becomes active
+// Start streaming Grok response when component becomes active and entities are loaded
 watch(() => props.isActive, (active: boolean) => {
-  if (active && !selectedExpertView.value) {
-    // Only start typing animation when becoming active (not already showing expert response)
-    displayedResponse.value = ''
-    typingIndex.value = 0
-    isTyping.value = true
-    setTimeout(typeResponse, 500)
+  if (active && !selectedExpertView.value && !grokResponseLoaded.value && allEntityIds.value.length > 0) {
+    // Stream the Grok overview when becoming active
+    streamGrokOverview(allEntityIds.value)
   }
 }, { immediate: true })
 
 // Watch for keyword changes - fetch entities even when not active (for pre-loading)
-watch(() => props.keyword, (newKeyword: string | undefined) => {
+watch(() => props.keyword, async (newKeyword: string | undefined) => {
   const keyword = newKeyword || 'F1'
   
   // Only fetch if keyword has changed
@@ -712,16 +657,15 @@ watch(() => props.keyword, (newKeyword: string | undefined) => {
     selectedExpertView.value = null
     filteredEntityAccounts.value = []
     filteredEntitiesCount.value = 0
+    displayedResponse.value = ''
+    grokResponseLoaded.value = false
     
     // Fetch entities for new keyword
-    fetchEntities(keyword)
+    await fetchEntities(keyword)
     
-    // If active, also restart typing animation
-    if (props.isActive) {
-      displayedResponse.value = ''
-      typingIndex.value = 0
-      isTyping.value = true
-      setTimeout(typeResponse, 500)
+    // If active and entities loaded, stream the Grok response
+    if (props.isActive && allEntityIds.value.length > 0) {
+      await streamGrokOverview(allEntityIds.value)
     }
   }
 }, { immediate: true })
