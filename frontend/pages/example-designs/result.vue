@@ -104,9 +104,9 @@
       />
     </div>
 
-    <!-- GrokSignal Tab Content -->
-    <div v-if="activeTab === 'groksignal'" class="tab-content">
-      <ExampleGrokSignal :is-active="activeTab === 'groksignal'" @start-debate="switchToDebate" />
+    <!-- GrokSignal Tab Content (use v-show for preloading) -->
+    <div v-show="activeTab === 'groksignal'" class="tab-content">
+      <ExampleGrokSignal :is-active="activeTab === 'groksignal'" :keyword="searchKeyword" @start-debate="switchToDebate" />
     </div>
 
     <!-- Expert Debate Tab Content -->

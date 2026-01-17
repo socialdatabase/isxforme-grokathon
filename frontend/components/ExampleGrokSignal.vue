@@ -6,16 +6,20 @@
         <!-- Entities Found -->
         <div class="grok-accordion">
           <button class="accordion-header" @click="toggleEntities">
-            <span>1000+ entities found...</span>
-            <div class="entity-avatars">
-              <img v-for="avatar in entityAvatars" :key="avatar" :src="avatar" alt="Entity" class="entity-avatar" />
+            <span>{{ entitiesCountDisplay }}</span>
+            <div v-if="entityAvatars.length > 0" class="entity-avatars">
+              <img v-for="(avatar, index) in entityAvatars" :key="index" :src="avatar" alt="Entity" class="entity-avatar" />
             </div>
             <svg class="accordion-arrow" :class="{ open: entitiesOpen }" width="20" height="20" viewBox="0 0 24 24" fill="none">
               <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </button>
           <div v-if="entitiesOpen" class="accordion-content">
-            <div class="entity-list">
+            <div v-if="loadingEntities || loadingFilteredEntities" class="entity-loading">
+              <div class="spinner-small"></div>
+              <span>Loading...</span>
+            </div>
+            <div v-else class="entity-list">
               <div v-for="account in entityAccounts" :key="account.username" class="entity-item">
                 <img :src="account.avatar" :alt="account.displayName" />
                 <span>{{ account.displayName }}</span>
@@ -77,6 +81,11 @@
         <h3 class="expert-title">Expert Views</h3>
         <p class="expert-subtitle">Filter by perspective</p>
         <div class="expert-categories">
+          <div v-if="loadingCategories" class="categories-loading">
+            <div class="spinner-small"></div>
+            <span>Loading categories...</span>
+          </div>
+          <template v-else-if="expertCategories.length > 0">
           <button 
             v-for="category in expertCategories" 
             :key="category.name"
@@ -87,6 +96,8 @@
             <span class="category-name">{{ category.name }}</span>
             <span class="category-count">{{ category.count }}</span>
           </button>
+          </template>
+          <p v-else class="no-categories">No expert categories found</p>
         </div>
         
         <!-- Start Debate Button -->
@@ -102,13 +113,38 @@
 </template>
 
 <script setup lang="ts">
+const config = useRuntimeConfig()
+
 const props = defineProps<{
   isActive: boolean
+  keyword?: string
 }>()
 
 const emit = defineEmits<{
   (e: 'start-debate'): void
 }>()
+
+// Types
+interface EntityAccount {
+  id: string
+  displayName: string
+  username: string
+  avatar: string
+}
+
+interface ApiAccount {
+  id: string
+  username: string
+  name: string
+  description: string
+  profile_image_url: string
+  verified: boolean
+  public_metrics: {
+    followers_count: number
+    following_count: number
+    tweet_count: number
+  }
+}
 
 const entitiesOpen = ref(false)
 const sourcesOpen = ref(false)
@@ -117,28 +153,140 @@ const displayedResponse = ref('')
 const typingIndex = ref(0)
 const grokFollowup = ref('')
 const selectedExpertView = ref<string | null>(null)
+const loadingEntities = ref(true)
+const loadingCategories = ref(true)
+const totalEntitiesCount = ref(0)
 
-const entityAvatars = [
-  'https://www.gtplanet.net/wp-content/uploads/2017/11/F1-2018-Logo.jpg',
-  'https://pbs.twimg.com/profile_images/1874472051517296640/anm3Q000_normal.jpg',
-  'https://pbs.twimg.com/profile_images/947659786555940865/P5eYYYIx_normal.jpg',
-  'https://pbs.twimg.com/profile_images/1759865143410765824/5B64vpgr_normal.jpg',
-  'https://pbs.twimg.com/profile_images/1276567411240681472/8KdXHFdK_normal.jpg',
-  'https://pbs.twimg.com/profile_images/2006665433651290112/bZZ9Ywke_normal.jpg',
-]
+// Store all fetched IDs (up to 100) for expert categories
+const allEntityIds = ref<string[]>([])
 
-const entityAccounts = [
-  { displayName: 'Formula 1', username: 'F1', avatar: 'https://pbs.twimg.com/profile_images/1612433922733887489/7f5XFklA_normal.jpg' },
-  { displayName: 'formularacers', username: 'formularacers_', avatar: 'https://pbs.twimg.com/profile_images/1430856837201637378/y8HLNdMx_normal.jpg' },
-  { displayName: 'Lewis Hamilton', username: 'LewisHamilton', avatar: 'https://pbs.twimg.com/profile_images/1874472051517296640/anm3Q000_normal.jpg' },
-  { displayName: 'Will Buxton', username: 'wbuxtonofficial', avatar: 'https://pbs.twimg.com/profile_images/1935077864577347584/EJo0lH27_normal.jpg' },
-  { displayName: 'Scuderia Ferrari HP', username: 'ScuderiaFerrari', avatar: 'https://pbs.twimg.com/profile_images/947659786555940865/P5eYYYIx_normal.jpg' },
-  { displayName: 'Matt Gallagher', username: 'MattP1Gallagher', avatar: 'https://pbs.twimg.com/profile_images/1893327368464334848/swYpqR8N_normal.jpg' },
-  { displayName: 'McLaren', username: 'McLarenF1', avatar: 'https://pbs.twimg.com/profile_images/2009686309229441024/YAoyori-_normal.jpg' },
-  { displayName: 'Oscar Piastri', username: 'OscarPiastri', avatar: 'https://pbs.twimg.com/profile_images/1841820044319248384/oPyapkyb_normal.jpg' },
-  { displayName: 'Charles Leclerc', username: 'Charles_Leclerc', avatar: 'https://pbs.twimg.com/profile_images/1276567411240681472/8KdXHFdK_normal.jpg' },
-  { displayName: 'ESPN F1', username: 'ESPNF1', avatar: 'https://pbs.twimg.com/profile_images/1632765606771425280/JamKD2T8_normal.jpg' },
-]
+// Fetched accounts data (all entities)
+const allEntityAccounts = ref<EntityAccount[]>([])
+
+// Filtered accounts for selected expert category
+const filteredEntityAccounts = ref<EntityAccount[]>([])
+const filteredEntitiesCount = ref(0)
+const loadingFilteredEntities = ref(false)
+
+// Expert categories from API
+interface ExpertCategory {
+  name: string
+  count: number | string
+  ids: number[]
+}
+const expertCategories = ref<ExpertCategory[]>([])
+
+// Use filtered accounts when a category is selected, otherwise all accounts
+const displayedEntityAccounts = computed(() => 
+  selectedExpertView.value ? filteredEntityAccounts.value : allEntityAccounts.value
+)
+
+const displayedEntitiesCount = computed(() => 
+  selectedExpertView.value ? filteredEntitiesCount.value : totalEntitiesCount.value
+)
+
+// Top 10 avatars for header
+const entityAvatars = computed(() => 
+  displayedEntityAccounts.value.slice(0, 10).map(acc => acc.avatar)
+)
+
+// Top 25 accounts for expanded list
+const entityAccounts = computed(() => 
+  displayedEntityAccounts.value.slice(0, 25)
+)
+
+// Fetch expert categories from API
+const fetchExpertCategories = async (ids: string[]) => {
+  if (ids.length === 0) return
+  
+  loadingCategories.value = true
+  
+  try {
+    const idsParams = ids.map((id: string) => `ids=${id}`).join('&')
+    const response = await $fetch<{ categories: Record<string, number[]> }>(
+      `${config.public.apiBase}/grokathon/fetch-expert-categories/?${idsParams}`
+    )
+    
+    if (response.categories) {
+      // Convert the categories object to an array format for the UI
+      expertCategories.value = Object.entries(response.categories)
+        .map(([name, categoryIds]: [string, number[]]) => ({
+          name,
+          count: categoryIds.length >= 1000 ? `${Math.floor(categoryIds.length / 1000)}K+` : categoryIds.length,
+          ids: categoryIds
+        }))
+        .sort((a, b) => {
+          // Sort by count (descending)
+          const countA = typeof a.count === 'string' ? parseInt(a.count) * 1000 : a.count
+          const countB = typeof b.count === 'string' ? parseInt(b.count) * 1000 : b.count
+          return countB - countA
+        })
+    }
+  } catch (err) {
+    console.error('Error fetching expert categories:', err)
+  } finally {
+    loadingCategories.value = false
+  }
+}
+
+// Fetch accounts from API
+const fetchEntities = async (keyword: string) => {
+  loadingEntities.value = true
+  allEntityAccounts.value = []
+  allEntityIds.value = []
+  expertCategories.value = []
+
+  try {
+    // Step 1: Fetch IDs for the keyword
+    const idsResponse = await $fetch<{ ids: string[] }>(
+      `${config.public.apiBase}/grokathon/fetch-ids/?input_query=${encodeURIComponent(keyword)}`
+    )
+
+    if (!idsResponse.ids || idsResponse.ids.length === 0) {
+      return
+    }
+
+    // Store total count for display
+    totalEntitiesCount.value = idsResponse.ids.length
+
+    // Store top 100 IDs for expert categories
+    allEntityIds.value = idsResponse.ids.slice(0, 100)
+
+    // Take up to 25 IDs for the entity list display
+    const idsToFetch = idsResponse.ids.slice(0, 25)
+
+    // Step 2: Fetch account details
+    const idsParams = idsToFetch.map((id: string) => `ids=${id}`).join('&')
+    const accountsResponse = await $fetch<{ accounts: ApiAccount[] }>(
+      `${config.public.apiBase}/grokathon/fetch-accounts/?${idsParams}`
+    )
+
+    if (accountsResponse.accounts && accountsResponse.accounts.length > 0) {
+      allEntityAccounts.value = accountsResponse.accounts.map((acc: ApiAccount) => ({
+        id: acc.id,
+        displayName: acc.name,
+        username: acc.username,
+        avatar: acc.profile_image_url || ''
+      }))
+    }
+
+    // Step 3: Fetch expert categories with top 100 IDs
+    await fetchExpertCategories(allEntityIds.value)
+  } catch (err) {
+    console.error('Error fetching entities:', err)
+  } finally {
+    loadingEntities.value = false
+  }
+}
+
+// Computed display for entity count
+const entitiesCountDisplay = computed(() => {
+  if (loadingEntities.value || loadingFilteredEntities.value) return 'Loading entities...'
+  const count = displayedEntitiesCount.value
+  if (count === 0) return 'No entities found'
+  if (count >= 1000) return `${Math.floor(count / 1000)}K+ entities found...`
+  return `${count}+ entities found...`
+})
 
 const grokFullResponse = `Here's the latest buzz in Formula 1 as we head into the <strong>2026 season</strong>—it's shaping up to be one of the most dramatic yet!
 
@@ -179,15 +327,6 @@ Pre-season testing kicks off in Barcelona (Feb 25-27), with all eyes on Audi, Fe
 Car launches are happening thick and fast—expect Red Bull, McLaren, and Mercedes to reveal their 2026 challengers soon.
 
 The 2026 season is already shaping up to be a game-changer—new cars, new engines, and a completely reshuffled driver market. Who's your pick for the title? 🏆🚀`
-
-const expertCategories = [
-  { name: 'F1 Drivers', count: 24 },
-  { name: 'Team Principals', count: 12 },
-  { name: 'Journalists', count: 156 },
-  { name: 'Engineers', count: 48 },
-  { name: 'Analysts', count: 89 },
-  { name: 'Fans', count: '10K+' },
-]
 
 const expertResponses: Record<string, string> = {
   'F1 Drivers': `From the drivers' perspective, 2026 is generating a mix of excitement and uncertainty.
@@ -284,18 +423,58 @@ const toggleSources = () => {
   sourcesOpen.value = !sourcesOpen.value
 }
 
-const selectExpertView = (category: string) => {
+// Fetch accounts for a specific expert category
+const fetchCategoryAccounts = async (categoryName: string) => {
+  const category = expertCategories.value.find((c: ExpertCategory) => c.name === categoryName)
+  if (!category || category.ids.length === 0) return
+
+  loadingFilteredEntities.value = true
+  filteredEntityAccounts.value = []
+  filteredEntitiesCount.value = category.ids.length
+
+  try {
+    // Fetch account details for up to 25 IDs from this category
+    const idsToFetch = category.ids.slice(0, 25)
+    const idsParams = idsToFetch.map((id: number) => `ids=${id}`).join('&')
+    const accountsResponse = await $fetch<{ accounts: ApiAccount[] }>(
+      `${config.public.apiBase}/grokathon/fetch-accounts/?${idsParams}`
+    )
+
+    if (accountsResponse.accounts && accountsResponse.accounts.length > 0) {
+      filteredEntityAccounts.value = accountsResponse.accounts.map((acc: ApiAccount) => ({
+        id: acc.id,
+        displayName: acc.name,
+        username: acc.username,
+        avatar: acc.profile_image_url || ''
+      }))
+    }
+  } catch (err) {
+    console.error('Error fetching category accounts:', err)
+  } finally {
+    loadingFilteredEntities.value = false
+  }
+}
+
+const selectExpertView = async (category: string) => {
   if (selectedExpertView.value === category) {
+    // Deselect - go back to showing all entities
     selectedExpertView.value = null
+    filteredEntityAccounts.value = []
+    filteredEntitiesCount.value = 0
     displayedResponse.value = ''
     typingIndex.value = 0
     isTyping.value = true
     setTimeout(typeResponse, 300)
   } else {
+    // Select new category
     selectedExpertView.value = category
     displayedResponse.value = ''
     typingIndex.value = 0
     isTyping.value = true
+    
+    // Fetch accounts for this category
+    await fetchCategoryAccounts(category)
+    
     setTimeout(() => typeExpertResponse(category), 300)
   }
 }
@@ -330,13 +509,43 @@ const typeResponse = () => {
   }
 }
 
-// Start typing when component becomes active
+// Track the last fetched keyword to avoid re-fetching the same data
+const lastFetchedKeyword = ref<string | null>(null)
+
+// Start typing animation when component becomes active
 watch(() => props.isActive, (active: boolean) => {
-  if (active) {
+  if (active && !selectedExpertView.value) {
+    // Only start typing animation when becoming active (not already showing expert response)
     displayedResponse.value = ''
     typingIndex.value = 0
     isTyping.value = true
     setTimeout(typeResponse, 500)
+  }
+}, { immediate: true })
+
+// Watch for keyword changes - fetch entities even when not active (for pre-loading)
+watch(() => props.keyword, (newKeyword: string | undefined) => {
+  const keyword = newKeyword || 'F1'
+  
+  // Only fetch if keyword has changed
+  if (keyword !== lastFetchedKeyword.value) {
+    lastFetchedKeyword.value = keyword
+    
+    // Clear any selected expert view when keyword changes
+    selectedExpertView.value = null
+    filteredEntityAccounts.value = []
+    filteredEntitiesCount.value = 0
+    
+    // Fetch entities for new keyword
+    fetchEntities(keyword)
+    
+    // If active, also restart typing animation
+    if (props.isActive) {
+      displayedResponse.value = ''
+      typingIndex.value = 0
+      isTyping.value = true
+      setTimeout(typeResponse, 500)
+    }
   }
 }, { immediate: true })
 </script>
@@ -433,6 +642,29 @@ watch(() => props.isActive, (active: boolean) => {
   border-radius: 0 0 12px 12px;
   padding: 1rem;
   margin-top: -0.5rem;
+}
+
+.entity-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #71767b;
+  font-size: 0.85rem;
+}
+
+.spinner-small {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #2f3336;
+  border-top-color: #1d9bf0;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .entity-list {
@@ -591,6 +823,22 @@ watch(() => props.isActive, (active: boolean) => {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+.categories-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #71767b;
+  font-size: 0.85rem;
+  padding: 0.75rem;
+}
+
+.no-categories {
+  color: #71767b;
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 0.75rem;
 }
 
 .expert-category {
