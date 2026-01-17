@@ -34,12 +34,26 @@
         <article v-if="articles[0]" class="lead-story">
           <h2 class="headline headline-lead">{{ articles[0].headline }}</h2>
           <p class="byline">By {{ articles[0].author }} | {{ articles[0].section }}</p>
-          <div class="lead-layout">
-            <div class="lead-image" v-if="articles[0].image">
-              <video v-if="articles[0].video" :poster="articles[0].image" :src="articles[0].video" muted loop
-                @mouseenter="($event.target as HTMLVideoElement).play()"
-                @mouseleave="v => { (v.target as HTMLVideoElement).pause(); (v.target as HTMLVideoElement).currentTime = 0; }" />
-              <img v-else :src="articles[0].image" :alt="articles[0].headline" @error="handleImageError($event, 0)" />
+          <div class="lead-layout ">
+            <div class="lead-image " v-if="articles[0].image">
+              <div class="media-wrapper group">
+                <video v-if="articles[0].video" :poster="articles[0].image" :src="articles[0].video" muted loop
+                  @mouseenter="($event.target as HTMLVideoElement).play()"
+                  @mouseleave="v => { (v.target as HTMLVideoElement).pause(); (v.target as HTMLVideoElement).currentTime = 0; }" />
+                <img v-else :src="articles[0].image" :alt="articles[0].headline" @error="handleImageError($event, 0)" />
+                <!-- Loading spinner when video is generating -->
+                 
+                <div v-if="articles[0].videoLoading" class="loading-spinner-bg" >
+                  <div class="loading-spinner">  
+                  </div>
+                </div>
+                <!-- Play button visual when video is ready -->
+                <div v-if="articles[0].video && !articles[0].videoLoading" class="play-button flex! group-hover:hidden!">
+                  <svg class="" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24">
+                    <path fill="currentColor" d="M8 17.175V6.825q0-.425.3-.713t.7-.287q.125 0 .263.037t.262.113l8.15 5.175q.225.15.338.375t.112.475t-.112.475t-.338.375l-8.15 5.175q-.125.075-.262.113T9 18.175q-.4 0-.7-.288t-.3-.712" />
+                  </svg>
+                </div>
+              </div>
               <p class="image-caption">{{ articles[0].imageCaption }}</p>
             </div>
             <div class="lead-text">
@@ -52,10 +66,24 @@
         <div class="stories-grid">
           <article v-for="(article, index) in articles.slice(1, 5)" :key="index" class="story-card">
             <div class="story-image" v-if="article.image">
-              <video v-if="article.video" :poster="article.image" :src="article.video" muted loop
-                @mouseenter="($event.target as HTMLVideoElement).play()"
-                @mouseleave="v => { (v.target as HTMLVideoElement).pause(); (v.target as HTMLVideoElement).currentTime = 0; }" />
-              <img v-else :src="article.image" :alt="article.headline" @error="handleImageError($event, Number(index) + 1)" />
+              <div class="media-wrapper group">
+                <video v-if="article.video" :poster="article.image" :src="article.video" muted loop
+                  @mouseenter="($event.target as HTMLVideoElement).play()"
+                  @mouseleave="v => { (v.target as HTMLVideoElement).pause(); (v.target as HTMLVideoElement).currentTime = 0; }" />
+                <img v-else :src="article.image" :alt="article.headline" @error="handleImageError($event, Number(index) + 1)" />
+                <!-- Loading spinner when video is generating -->
+                  <div v-if="article.videoLoading" class="loading-spinner-bg" >
+                  <div class="loading-spinner">  
+                  </div>
+                </div>
+                <!-- Play button visual when video is ready -->
+                <div v-if="article.video && !article.videoLoading" class="play-button flex! group-hover:hidden!">
+                  <svg class="" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24">
+                    <path fill="currentColor" d="M8 17.175V6.825q0-.425.3-.713t.7-.287q.125 0 .263.037t.262.113l8.15 5.175q.225.15.338.375t.112.475t-.112.475t-.338.375l-8.15 5.175q-.125.075-.262.113T9 18.175q-.4 0-.7-.288t-.3-.712" />
+                  </svg>
+                </div>
+              </div>
+              
             </div>
             <h3 class="headline headline-secondary">{{ article.headline }}</h3>
             <p class="byline">{{ article.author }}</p>
@@ -100,6 +128,7 @@ interface Article {
   source_usernames?: string[]  // New optional field
   video?: string | null  // New field for video URL
   prompt_text?: string
+  videoLoading?: boolean  // New field to track video generation loading state
 }
 
 interface ApiPost {
@@ -150,6 +179,7 @@ const handleImageError = (event: Event, index: number) => {
 const assignVideos = async () => {
   for (const article of articles.value) {
     if (article.image) {
+      article.videoLoading = true
       try {
         const res = await $fetch<{ video_url: string }>(
           `${config.public.apiBase}/grokathon/xai-image-to-video/`,
@@ -162,6 +192,8 @@ const assignVideos = async () => {
         article.video = res.video_url || null
       } catch (e) {
         console.error('Video generation error for image:', article.image, e)
+      } finally {
+        article.videoLoading = false
       }
     }
   }
@@ -307,6 +339,7 @@ const generateNewspaper = async (keyword: string) => {
           return {
             ...article,
             image: selectedImage,
+            videoLoading: true,
             imageCaption: article.imageCaption || `Related to ${keyword}`
           }
         })
@@ -826,5 +859,58 @@ onMounted(() => {
   .newspaper-content {
     padding: 1rem;
   }
+}
+
+/* New: Styles for media wrapper, loading spinner, and play button */
+.media-wrapper {
+  position: relative;
+  display: inline-block;
+  /* width: 100%; */
+}
+
+.loading-spinner-bg {
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 50%;
+  height: 50px;
+  width: 50px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  
+}
+
+.loading-spinner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border: 4px solid rgba(255, 255, 255, 0.1);
+  border-left-color: #cfcfcf;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+.play-button {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 2rem;
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none; /* So it doesn't interfere with hover */
 }
 </style>
