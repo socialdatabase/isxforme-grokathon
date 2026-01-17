@@ -303,6 +303,7 @@ def fetch_posts(ids: list[str], n_per_account: int = 5, order_by: str = "created
 
     # Order by likes or recency, default is likes
     posts = sorted(posts, key=lambda x: x["post"][order_by], reverse=True)
+    posts = [post for post in posts if post["post"]["post_type"] == "original"]
     return posts
 
 
