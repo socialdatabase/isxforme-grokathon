@@ -148,7 +148,6 @@ const showNewspaper = ref(false)
 
 watch(activeTabUi, () => {
   activeTab.value = activeTabUi.value;
-  console.log(activeTabUi.value)
 })
 
 // Apply query params and reset state for fresh search
