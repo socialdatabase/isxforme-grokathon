@@ -1,6 +1,5 @@
 <template>
-<<<<<<< HEAD
-  <div class="container">
+  <div class="container-isxforme">
     <!-- Full-page Shooting Stars Overlay -->
     <transition name="fade">
       <div v-if="showStars" class="stars-overlay" @click="skipStars">
@@ -17,9 +16,6 @@
       </div>
     </transition>
 
-=======
-  <div class="container-isxforme">
->>>>>>> 7e33019d5d807002e423ade7c96cfb765cccaabc
     <!-- Hero Section / Toggle -->
     <header class="hero" :class="{ collapsed: showTabs }" @click="collapseHero">
       <transition name="fade" mode="out-in">
