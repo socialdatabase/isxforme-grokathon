@@ -31,21 +31,29 @@
         <!-- Content Sources -->
         <div class="grok-accordion">
           <button class="accordion-header" @click="toggleSources">
-            <span>Content found on:</span>
+            <span>{{ contentPostsCountDisplay }}</span>
             <svg class="accordion-arrow" :class="{ open: sourcesOpen }" width="20" height="20" viewBox="0 0 24 24" fill="none">
               <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </button>
           <div v-if="sourcesOpen" class="accordion-content">
-            <div class="source-list">
-              <a href="#" class="source-item">x.com/F1</a>
-              <a href="#" class="source-item">x.com/LewisHamilton</a>
-              <a href="#" class="source-item">x.com/ScuderiaFerrari</a>
-              <a href="#" class="source-item">x.com/McLarenF1</a>
-              <a href="#" class="source-item">x.com/redbullracing</a>
-              <a href="#" class="source-item">formula1.com</a>
-              <a href="#" class="source-item">motorsport.com</a>
+            <div v-if="loadingPosts" class="entity-loading">
+              <div class="spinner-small"></div>
+              <span>Loading posts...</span>
             </div>
+            <div v-else-if="contentPosts.length > 0" class="content-posts-list">
+              <div v-for="post in contentPosts" :key="post.id" class="content-post-item">
+                <img :src="post.avatar" :alt="post.username" class="content-post-avatar" />
+                <div class="content-post-body">
+                  <a :href="`https://x.com/${post.username}/status/${post.id}`" target="_blank" class="content-post-link">
+                    <span class="content-post-username">@{{ post.username }}</span>
+                    <span class="content-post-text">{{ truncateText(post.text, 80) }}</span>
+                  </a>
+                  <span class="content-post-likes">❤️ {{ formatNumber(post.likes) }}</span>
+                </div>
+              </div>
+            </div>
+            <p v-else class="no-posts">No posts found</p>
           </div>
         </div>
 
@@ -146,6 +154,36 @@ interface ApiAccount {
   }
 }
 
+interface ContentPost {
+  id: string
+  text: string
+  username: string
+  avatar: string
+  likes: number
+  created_at: string
+  photo: string | null
+}
+
+interface ApiPost {
+  post: {
+    id: string
+    text: string
+    created_at: string
+    account_id: string
+    retweet_count: number | null
+    reply_count: number | null
+    like_count: number | null
+    impression_count: number | null
+    media: any[] | null
+  }
+  account: {
+    id: string
+    username: string
+    verified: boolean | null
+    profile_image_url: string | null
+  }
+}
+
 const entitiesOpen = ref(false)
 const sourcesOpen = ref(false)
 const isTyping = ref(true)
@@ -155,7 +193,11 @@ const grokFollowup = ref('')
 const selectedExpertView = ref<string | null>(null)
 const loadingEntities = ref(true)
 const loadingCategories = ref(true)
+const loadingPosts = ref(true)
 const totalEntitiesCount = ref(0)
+
+// Posts for "Content found on" section
+const contentPosts = ref<ContentPost[]>([])
 
 // Store all fetched IDs (up to 100) for expert categories
 const allEntityIds = ref<string[]>([])
@@ -272,10 +314,64 @@ const fetchEntities = async (keyword: string) => {
 
     // Step 3: Fetch expert categories with top 100 IDs
     await fetchExpertCategories(allEntityIds.value)
+    
+    // Step 4: Fetch posts for "Content found on" section
+    await fetchContentPosts(allEntityIds.value)
   } catch (err) {
     console.error('Error fetching entities:', err)
   } finally {
     loadingEntities.value = false
+  }
+}
+
+// Fetch posts for "Content found on" section
+const fetchContentPosts = async (ids: string[]) => {
+  if (ids.length === 0) return
+  
+  loadingPosts.value = true
+  contentPosts.value = []
+  
+  try {
+    // Take top 20 accounts to fetch posts from (20 posts per account = up to 400 posts)
+    const idsToFetch = ids.slice(0, 20)
+    const idsParams = idsToFetch.map((id: string) => `ids=${id}`).join('&')
+    
+    const response = await $fetch<{ posts: ApiPost[] }>(
+      `${config.public.apiBase}/grokathon/fetch-posts/?${idsParams}`
+    )
+    
+    if (response.posts && response.posts.length > 0) {
+      // Map to ContentPost format and take top 20 by likes
+      contentPosts.value = response.posts
+        .map((item: ApiPost) => {
+          // Extract first media photo if available
+          let photo: string | null = null
+          if (item.post.media && item.post.media.length > 0) {
+            const firstMedia = item.post.media[0]
+            if (firstMedia.url) {
+              photo = firstMedia.url
+            } else if (firstMedia.preview_image_url) {
+              photo = firstMedia.preview_image_url
+            }
+          }
+          
+          return {
+            id: item.post.id,
+            text: item.post.text,
+            username: item.account.username,
+            avatar: item.account.profile_image_url || '',
+            likes: item.post.like_count || 0,
+            created_at: item.post.created_at,
+            photo
+          }
+        })
+        .sort((a: ContentPost, b: ContentPost) => b.likes - a.likes)
+        .slice(0, 20)
+    }
+  } catch (err) {
+    console.error('Error fetching content posts:', err)
+  } finally {
+    loadingPosts.value = false
   }
 }
 
@@ -287,6 +383,25 @@ const entitiesCountDisplay = computed(() => {
   if (count >= 1000) return `${Math.floor(count / 1000)}K+ entities found...`
   return `${count}+ entities found...`
 })
+
+// Computed display for content posts count
+const contentPostsCountDisplay = computed(() => {
+  if (loadingPosts.value) return 'Loading content...'
+  if (contentPosts.value.length === 0) return 'Content found on:'
+  return `Content found on: ${contentPosts.value.length} posts`
+})
+
+// Helper functions
+const truncateText = (text: string, maxLength: number): string => {
+  if (text.length <= maxLength) return text
+  return text.slice(0, maxLength).trim() + '...'
+}
+
+const formatNumber = (num: number): string => {
+  if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M'
+  if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'K'
+  return num.toString()
+}
 
 const grokFullResponse = `Here's the latest buzz in Formula 1 as we head into the <strong>2026 season</strong>—it's shaping up to be one of the most dramatic yet!
 
@@ -691,20 +806,96 @@ watch(() => props.keyword, (newKeyword: string | undefined) => {
   object-fit: cover;
 }
 
-.source-list {
+.content-posts-list {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 0.5rem;
 }
 
-.source-item {
-  color: #1d9bf0;
-  font-size: 0.85rem;
+/* Custom scrollbar styling */
+.content-posts-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.content-posts-list::-webkit-scrollbar-track {
+  background: #16181c;
+  border-radius: 3px;
+}
+
+.content-posts-list::-webkit-scrollbar-thumb {
+  background: #3a3f47;
+  border-radius: 3px;
+}
+
+.content-posts-list::-webkit-scrollbar-thumb:hover {
+  background: #4a5058;
+}
+
+.content-post-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  border-radius: 8px;
+  transition: background-color 0.2s ease;
+}
+
+.content-post-item:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.content-post-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.content-post-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.content-post-link {
+  color: #e7e9ea;
   text-decoration: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
 }
 
-.source-item:hover {
-  text-decoration: underline;
+.content-post-link:hover {
+  color: #1d9bf0;
+}
+
+.content-post-username {
+  color: #1d9bf0;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.content-post-text {
+  font-size: 0.85rem;
+  color: #71767b;
+  line-height: 1.4;
+}
+
+.content-post-likes {
+  font-size: 0.75rem;
+  color: #71767b;
+}
+
+.no-posts {
+  color: #71767b;
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 0.75rem;
 }
 
 .grok-response {
