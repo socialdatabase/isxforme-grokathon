@@ -1,0 +1,610 @@
+<template>
+  <div class="container">
+    <!-- Hero Section / Toggle -->
+    <header class="hero" :class="{ collapsed: showTabs }" @click="collapseHero">
+      <transition name="fade" mode="out-in">
+        <div v-if="!showTabs" key="hero" class="hero-content">
+          <h1 class="hero-title">𝕏 is definitely for you!</h1>
+          <p class="hero-subtitle">We found an amazing community that matches your interests</p>
+        </div>
+        <div v-else key="tabs" class="tabs-container">
+          <button 
+            class="tab" 
+            :class="{ active: activeTab === 'overview' }"
+            @click.stop="activeTab = 'overview'"
+          >
+            Overview
+          </button>
+          <button 
+            class="tab" 
+            :class="{ active: activeTab === 'timeline' }"
+            @click.stop="activeTab = 'timeline'"
+          >
+            Timeline
+          </button>
+          <button 
+            class="tab groksignal" 
+            :class="{ active: activeTab === 'groksignal' }"
+            @click.stop="activeTab = 'groksignal'"
+          >
+            GrokSignal
+          </button>
+          <button 
+            class="tab" 
+            :class="{ active: activeTab === 'index' }"
+            @click.stop="activeTab = 'index'"
+          >
+            Index
+          </button>
+        </div>
+      </transition>
+    </header>
+
+    <!-- Unified Search Bar -->
+    <div v-if="showTabs" class="search-bar-container" :class="searchBarWidthClass">
+      <div class="search-bar-row">
+        <form class="search-bar" @submit.prevent="handleSearch">
+          <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <path d="M21 21L16.65 16.65M19 11C19 15.4183 15.4183 19 11 19C6.58172 19 3 15.4183 3 11C3 6.58172 6.58172 3 11 3C15.4183 3 19 6.58172 19 11Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <input
+            v-model="searchInput"
+            type="text"
+            class="search-input"
+            placeholder="Search for a topic or @handle..."
+          />
+          <button type="submit" class="search-submit" :disabled="!searchInput.trim()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </form>
+        
+        <!-- Podcast Mode Button (Timeline only) -->
+        <button 
+          v-if="activeTab === 'timeline'"
+          class="podcast-btn"
+          :class="{ active: podcastMode }"
+          @click="podcastMode = !podcastMode"
+        >
+          <span class="podcast-label">{{ podcastMode ? 'Playing' : 'Podcast' }}</span>
+          <div class="sound-waves" :class="{ playing: podcastMode }">
+            <span class="wave"></span>
+            <span class="wave"></span>
+            <span class="wave"></span>
+            <span class="wave"></span>
+          </div>
+        </button>
+      </div>
+    </div>
+
+    <!-- Overview Tab Content (use v-show for preloading) -->
+    <div v-show="activeTab === 'overview'" class="tab-content">
+      <ExampleOverview :keyword="searchKeyword" @switch-to-timeline="switchToTimeline" />
+    </div>
+
+    <!-- Timeline Tab Content (use v-show for preloading) -->
+    <div v-show="activeTab === 'timeline'" class="tab-content">
+      <ExampleTimeline :keyword="searchKeyword" @open-newspaper="openNewspaper" />
+    </div>
+
+    <!-- Index Tab Content (use v-show for preloading) -->
+    <div v-show="activeTab === 'index'" class="tab-content">
+      <ExampleIndex
+        :keyword="searchKeyword"
+        @select-account="handleAccountSelect"
+      />
+    </div>
+
+    <!-- Account Detail View -->
+    <div v-if="activeTab === 'account' && selectedAccount" class="tab-content">
+      <ExampleAccountDetail
+        :account="selectedAccount"
+        @back="backToIndex"
+      />
+    </div>
+
+    <!-- GrokSignal Tab Content -->
+    <div v-if="activeTab === 'groksignal'" class="tab-content">
+      <ExampleGrokSignal :is-active="activeTab === 'groksignal'" @start-debate="switchToDebate" />
+    </div>
+
+    <!-- Expert Debate Tab Content -->
+    <div v-if="activeTab === 'debate'" class="tab-content">
+      <ExampleExpertDebate :is-active="activeTab === 'debate'" />
+    </div>
+
+    <!-- The Grok Times Overlay -->
+    <div v-if="showNewspaper" class="newspaper-overlay" @click.self="closeNewspaper">
+      <button class="newspaper-close" @click="closeNewspaper">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <div class="newspaper-content">
+        <TheGrokTimes :keyword="searchKeyword" />
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+const route = useRoute()
+
+// Account type (must match ExampleIndex)
+interface SelectedAccountData {
+  id: string
+  displayName: string
+  username: string
+  avatar: string
+  followers: string
+  following: string
+  verified: boolean
+  description: string
+}
+
+const showTabs = ref(false)
+const activeTab = ref<'overview' | 'timeline' | 'groksignal' | 'index' | 'account' | 'debate'>('overview')
+const selectedAccount = ref<SelectedAccountData | null>(null)
+const searchKeyword = ref('') // Start empty, will be set from query
+const searchInput = ref('') // Input field value
+const podcastMode = ref(false)
+const showNewspaper = ref(false)
+
+// Apply query params and reset state for fresh search
+const applyQueryParams = () => {
+  const tab = route.query.tab as string
+  const user = route.query.user as string
+  const q = route.query.q as string
+  
+  // Set search keyword from query
+  if (q) {
+    searchKeyword.value = q
+    searchInput.value = q
+  } else {
+    // Default to F1 if no query
+    searchKeyword.value = 'F1'
+    searchInput.value = ''
+  }
+  
+  // Reset to overview for fresh search unless specific tab requested
+  if (tab) {
+    const validTabs = ['overview', 'timeline', 'groksignal', 'index', 'account', 'debate']
+    if (validTabs.includes(tab)) {
+      activeTab.value = tab as typeof activeTab.value
+      showTabs.value = true
+    }
+  } else {
+    activeTab.value = 'overview'
+  }
+  
+  // Note: Direct URL navigation to account detail is not supported
+  // Users must navigate through the index to view account details
+  if (tab !== 'account') {
+    selectedAccount.value = null
+  }
+}
+
+const collapseHero = () => {
+  showTabs.value = true
+}
+
+const switchToTimeline = () => {
+  showTabs.value = true
+  activeTab.value = 'timeline'
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+const switchToDebate = () => {
+  showTabs.value = true
+  activeTab.value = 'debate'
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+const openNewspaper = () => {
+  showNewspaper.value = true
+  document.body.style.overflow = 'hidden'
+}
+
+const closeNewspaper = () => {
+  showNewspaper.value = false
+  document.body.style.overflow = ''
+}
+
+// Handle unified search
+const handleSearch = () => {
+  if (searchInput.value.trim()) {
+    searchKeyword.value = searchInput.value.trim()
+    // Stay on current tab, but if on account/debate view, go back to a main tab
+    if (activeTab.value === 'account') {
+      activeTab.value = 'index'
+    } else if (activeTab.value === 'debate') {
+      activeTab.value = 'groksignal'
+    }
+    // Otherwise stay on current tab (overview, timeline, groksignal, index)
+    selectedAccount.value = null
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+}
+
+const handleAccountSelect = (account: SelectedAccountData) => {
+  selectedAccount.value = account
+  activeTab.value = 'account'
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+const backToIndex = () => {
+  activeTab.value = 'index'
+  selectedAccount.value = null
+}
+
+// Compute search bar width class based on active tab
+const searchBarWidthClass = computed(() => {
+  switch (activeTab.value) {
+    case 'overview':
+    case 'account':
+      return 'width-800'
+    case 'timeline':
+    case 'groksignal':
+    case 'debate':
+      return 'width-1000'
+    case 'index':
+      return 'width-1200'
+    default:
+      return 'width-800'
+  }
+})
+
+// Watch for route query changes (handles navigation from index.vue)
+watch(() => route.query.q, (newQ: string | (string | null)[] | null | undefined) => {
+  if (newQ && typeof newQ === 'string') {
+    searchKeyword.value = newQ
+    searchInput.value = newQ
+    // Go to overview only on initial navigation (when coming from index page)
+    // This happens when first arriving at the result page
+    if (!showTabs.value) {
+      activeTab.value = 'overview'
+    }
+    selectedAccount.value = null
+    showTabs.value = true
+  }
+})
+
+onMounted(() => {
+  applyQueryParams()
+  
+  if (!route.query.tab) {
+    setTimeout(() => {
+      showTabs.value = true
+    }, 5000)
+  }
+})
+
+definePageMeta({
+  layout: false
+})
+</script>
+
+<style scoped>
+.container {
+  min-height: 100vh;
+  background-color: #000;
+  padding: 3rem 1.5rem;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Hero */
+.hero {
+  text-align: center;
+  margin-bottom: 2.5rem;
+  cursor: pointer;
+  transition: all 0.4s ease;
+}
+
+.hero.collapsed {
+  cursor: default;
+}
+
+.hero-content {
+  padding: 1rem 0;
+}
+
+.hero-title {
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 0.75rem;
+  letter-spacing: -0.03em;
+}
+
+.hero-subtitle {
+  font-size: 1.05rem;
+  color: #71767b;
+}
+
+/* Tabs */
+.tabs-container {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background-color: #16181c;
+  border-radius: 50px;
+  width: fit-content;
+  margin: 0 auto;
+}
+
+.tab {
+  flex: 1;
+  padding: 0.75rem 2rem;
+  background: transparent;
+  border: none;
+  border-radius: 50px;
+  color: #71767b;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  text-align: center;
+}
+
+.tab.groksignal {
+  margin-left: -1rem;
+}
+
+.tab:hover {
+  color: #e7e9ea;
+}
+
+.tab.active {
+  background-color: #fff;
+  color: #000;
+}
+
+/* Unified Search Bar */
+.search-bar-container {
+  margin: 0 auto 2rem;
+  transition: max-width 0.3s ease;
+}
+
+.search-bar-container.width-800 {
+  max-width: 800px;
+}
+
+.search-bar-container.width-1000 {
+  max-width: 1000px;
+}
+
+.search-bar-container.width-1200 {
+  max-width: 1200px;
+}
+
+.search-bar-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: stretch;
+}
+
+.search-bar {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  background-color: #16181c;
+  border-radius: 28px;
+  border: 1px solid #2f3336;
+  padding: 0.25rem 0.5rem;
+  transition: border-color 0.2s ease;
+}
+
+.search-bar:focus-within {
+  border-color: #1d9bf0;
+}
+
+.search-icon {
+  color: #71767b;
+  margin-left: 0.75rem;
+  flex-shrink: 0;
+}
+
+.search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 0.85rem 0.75rem;
+  font-size: 1rem;
+  color: #e7e9ea;
+  font-family: inherit;
+}
+
+.search-input::placeholder {
+  color: #71767b;
+}
+
+.search-submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background-color: #fff;
+  border: none;
+  border-radius: 50%;
+  color: #000;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  flex-shrink: 0;
+}
+
+.search-submit:hover:not(:disabled) {
+  background-color: #d1d1d1;
+}
+
+.search-submit:disabled {
+  background-color: #3f4347;
+  color: #71767b;
+  cursor: not-allowed;
+}
+
+/* Podcast Mode Button */
+.podcast-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background-color: #16181c;
+  border: 1px solid #2f3336;
+  border-radius: 28px;
+  padding: 0 1.25rem;
+  color: #71767b;
+  font-size: 0.95rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.podcast-btn:hover {
+  border-color: #1d9bf0;
+  color: #e7e9ea;
+}
+
+.podcast-btn.active {
+  background-color: #fff;
+  border-color: #fff;
+  color: #000;
+}
+
+.podcast-label {
+  min-width: 60px;
+}
+
+/* Sound Waves Animation */
+.sound-waves {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+}
+
+.sound-waves .wave {
+  width: 3px;
+  height: 8px;
+  background-color: currentColor;
+  border-radius: 2px;
+  opacity: 0.4;
+}
+
+.sound-waves.playing .wave {
+  opacity: 1;
+  animation: soundWave 0.8s ease-in-out infinite;
+}
+
+.sound-waves.playing .wave:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.sound-waves.playing .wave:nth-child(2) {
+  animation-delay: 0.1s;
+}
+
+.sound-waves.playing .wave:nth-child(3) {
+  animation-delay: 0.2s;
+}
+
+.sound-waves.playing .wave:nth-child(4) {
+  animation-delay: 0.3s;
+}
+
+@keyframes soundWave {
+  0%, 100% {
+    height: 8px;
+  }
+  50% {
+    height: 18px;
+  }
+}
+
+/* Transitions */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.fade-enter-from {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.fade-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+/* Tab Content */
+.tab-content {
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Newspaper Overlay */
+.newspaper-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.9);
+  z-index: 1000;
+  overflow-y: auto;
+  animation: fadeIn 0.3s ease;
+}
+
+.newspaper-close {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 1001;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid #333;
+  border-radius: 50%;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.newspaper-close:hover {
+  background: rgba(50, 50, 50, 0.9);
+  transform: scale(1.1);
+}
+
+.newspaper-content {
+  min-height: 100vh;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .container {
+    padding: 2rem 1rem;
+  }
+  
+  .newspaper-close {
+    top: 0.5rem;
+    right: 0.5rem;
+  }
+}
+</style>
