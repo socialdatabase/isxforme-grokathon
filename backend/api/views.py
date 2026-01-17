@@ -12,15 +12,19 @@ from api.serializers import (
     FetchAccountsSerializer, 
     FetchPostsSerializer, 
     FetchGrokathonSizeSerializer,
+    FetchTopicsSerializer,
+    InferTopicInQuerySerializer,
     FetchIdsHandleTopicsSerializer,
     FetchTopicsAndRanksIdsSerializer,
+    GetAccountsWithRanksSerializer,
     FetchTopicsRanksHandleSerializer,
     FetchExpertCategoriesSerializer,
     TextToSpeechSerializer,
     SpeechToTextSerializer,
+    FetchPostsTimelineSerializer,
 )
 from api.core import QueryFilter
-from api.groksignal import get_expert_category_perspective
+from api.groksignal import get_expert_category_perspective, get_expert_overview, get_followup_response, generate_ai_bio_handle, fetch_account_by_username
 from api.newspaper import generate_newspaper_articles
 
 
@@ -169,6 +173,53 @@ class GrokathonViewSet(viewsets.GenericViewSet):
     @action(
         detail=False,
         methods=["get"],
+        serializer_class=FetchPostsTimelineSerializer,
+        filter_backends=[QueryFilter],
+        query_filters=["ids"],
+        url_path="fetch-posts-timeline",
+        url_name="fetch-posts-timeline",
+    )
+    def fetch_posts_timeline(self, request):
+        ids = request.GET.getlist("ids")
+        serializer = FetchPostsTimelineSerializer(data={"ids": ids})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        serializer_class=FetchTopicsSerializer,
+        filter_backends=[QueryFilter],
+        query_filters=[],
+        url_path="fetch-topics",
+        url_name="fetch-topics",
+    )
+    def fetch_topics(self, request):
+        serializer = FetchTopicsSerializer(data={})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        serializer_class=InferTopicInQuerySerializer,
+        filter_backends=[QueryFilter],
+        query_filters=["input_query"],
+        url_path="infer-topic-in-query",
+        url_name="infer-topic-in-query",
+    )
+    def infer_topic_in_query(self, request):
+        input_query = request.GET.get("input_query")
+        serializer = InferTopicInQuerySerializer(data={"input_query": input_query})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    @action(
+        detail=False,
+        methods=["get"],
         serializer_class=FetchGrokathonSizeSerializer,
         filter_backends=[QueryFilter],
         query_filters=["ids"],
@@ -220,6 +271,22 @@ class GrokathonViewSet(viewsets.GenericViewSet):
     @action(
         detail=False,
         methods=["get"],
+        serializer_class=GetAccountsWithRanksSerializer,
+        filter_backends=[QueryFilter],
+        query_filters=["input_query"],
+        url_path="get-accounts-with-ranks",
+        url_name="get-accounts-with-ranks",
+    )
+    def get_accounts_with_ranks(self, request):
+        input_query = request.GET.get("input_query")
+        serializer = GetAccountsWithRanksSerializer(data={"input_query": input_query})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    @action(
+        detail=False,
+        methods=["get"],
         serializer_class=FetchTopicsRanksHandleSerializer,
         filter_backends=[QueryFilter],
         query_filters=["handle"],
@@ -237,6 +304,26 @@ class GrokathonViewSet(viewsets.GenericViewSet):
     @action(
         detail=False,
         methods=["get"],
+        filter_backends=[QueryFilter],
+        query_filters=["handle"],
+        url_path="fetch-account-handle",
+        url_name="fetch-account-handle",
+    )
+    def fetch_account_handle(self, request):
+        """Fetch account details by username/handle"""
+        handle = request.GET.get("handle")
+        if not handle:
+            return Response({"error": "handle parameter required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            account = fetch_account_by_username(handle)
+            return Response({"account": account})
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(
+        detail=False,
+        methods=["get"],
         serializer_class=FetchExpertCategoriesSerializer,
         filter_backends=[QueryFilter],
         query_filters=["ids"],
@@ -249,6 +336,51 @@ class GrokathonViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        filter_backends=[QueryFilter],
+        query_filters=["handle"],
+        url_path="generate-ai-bio-handle",
+        url_name="generate-ai-bio-handle",
+    )
+    def generate_ai_bio_handle(self, request):
+        handle = request.GET.get("handle")
+
+        def stream_generator():
+            """Convert async generator to sync generator for StreamingHttpResponse"""
+            async def run_stream():
+                async for chunk in generate_ai_bio_handle(handle):
+                    yield chunk
+            
+            # Create a new event loop for this thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            try:
+                # Run the async generator
+                async_gen = run_stream()
+                while True:
+                    try:
+                        chunk = loop.run_until_complete(async_gen.__anext__())
+                        # StreamingHttpResponse expects bytes
+                        if isinstance(chunk, str):
+                            yield chunk.encode('utf-8')
+                        else:
+                            yield chunk
+                    except StopAsyncIteration:
+                        break
+            finally:
+                loop.close()
+        
+        response = StreamingHttpResponse(
+            stream_generator(),
+            content_type='text/plain; charset=utf-8'
+        )
+        response['Cache-Control'] = 'no-cache'
+        response['X-Accel-Buffering'] = 'no'  # Disable buffering in nginx
+        return response
 
     @action(
         detail=False,
@@ -283,6 +415,145 @@ class GrokathonViewSet(viewsets.GenericViewSet):
             """Convert async generator to sync generator for StreamingHttpResponse"""
             async def run_stream():
                 async for chunk in get_expert_category_perspective(input_query, expert_category, ids):
+                    yield chunk
+            
+            # Create a new event loop for this thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            try:
+                # Run the async generator
+                async_gen = run_stream()
+                while True:
+                    try:
+                        chunk = loop.run_until_complete(async_gen.__anext__())
+                        # StreamingHttpResponse expects bytes
+                        if isinstance(chunk, str):
+                            yield chunk.encode('utf-8')
+                        else:
+                            yield chunk
+                    except StopAsyncIteration:
+                        break
+            finally:
+                loop.close()
+        
+        response = StreamingHttpResponse(
+            stream_generator(),
+            content_type='text/plain; charset=utf-8'
+        )
+        response['Cache-Control'] = 'no-cache'
+        response['X-Accel-Buffering'] = 'no'  # Disable buffering in nginx
+        return response
+
+    @action(
+        detail=False,
+        methods=["get"],
+        filter_backends=[QueryFilter],
+        query_filters=["input_query", "ids"],
+        url_path="stream-expert-overview",
+        url_name="stream-expert-overview",
+    )
+    def stream_expert_overview(self, request):
+        """
+        Stream an overview of expert views on a given query.
+        This is the initial response when the user asks "What are the latest expert views on [topic]?"
+        
+        Query parameters:
+        - input_query: The user's query/topic of interest
+        - ids: List of account IDs to analyze (comma-separated or multiple)
+        
+        Returns a streaming text response.
+        """
+        input_query = request.GET.get("input_query")
+        ids = [int(id_val) for id_val in request.GET.getlist("ids") if id_val]
+        
+        if not input_query or not ids:
+            return Response(
+                {"error": "Missing required parameters: input_query and ids"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        def stream_generator():
+            """Convert async generator to sync generator for StreamingHttpResponse"""
+            async def run_stream():
+                async for chunk in get_expert_overview(input_query, ids):
+                    yield chunk
+            
+            # Create a new event loop for this thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            try:
+                # Run the async generator
+                async_gen = run_stream()
+                while True:
+                    try:
+                        chunk = loop.run_until_complete(async_gen.__anext__())
+                        # StreamingHttpResponse expects bytes
+                        if isinstance(chunk, str):
+                            yield chunk.encode('utf-8')
+                        else:
+                            yield chunk
+                    except StopAsyncIteration:
+                        break
+            finally:
+                loop.close()
+        
+        response = StreamingHttpResponse(
+            stream_generator(),
+            content_type='text/plain; charset=utf-8'
+        )
+        response['Cache-Control'] = 'no-cache'
+        response['X-Accel-Buffering'] = 'no'  # Disable buffering in nginx
+        return response
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="stream-followup",
+        url_name="stream-followup",
+    )
+    def stream_followup(self, request):
+        """
+        Stream a response to a follow-up question in an ongoing conversation.
+        
+        POST body (JSON):
+        - followup_question: The user's follow-up question
+        - conversation_history: List of previous messages [{role: "user"|"assistant", content: "..."}]
+        - input_query: The original topic/keyword
+        - ids: List of account IDs for context
+        - expert_category: Optional expert category name
+        
+        Returns a streaming text response.
+        """
+        import json as json_module
+        
+        data = request.data
+        followup_question = data.get("followup_question")
+        conversation_history = data.get("conversation_history", [])
+        input_query = data.get("input_query")
+        ids = data.get("ids", [])
+        expert_category = data.get("expert_category")
+        
+        if not followup_question or not input_query:
+            return Response(
+                {"error": "Missing required parameters: followup_question and input_query"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Convert ids to integers if they're strings
+        ids = [int(id_val) if isinstance(id_val, str) else id_val for id_val in ids]
+        
+        def stream_generator():
+            """Convert async generator to sync generator for StreamingHttpResponse"""
+            async def run_stream():
+                async for chunk in get_followup_response(
+                    followup_question,
+                    conversation_history,
+                    input_query,
+                    ids,
+                    expert_category
+                ):
                     yield chunk
             
             # Create a new event loop for this thread
