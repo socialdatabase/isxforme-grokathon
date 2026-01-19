@@ -6,7 +6,6 @@ from api.core import BotThrottle
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.http import StreamingHttpResponse, HttpResponse
-import asyncio
 
 from api.serializers import (
     XaiImageToVideoSerializer,
@@ -30,6 +29,7 @@ from api.serializers import (
 from api.core import QueryFilter
 from api.groksignal import get_expert_category_perspective, get_expert_overview, get_followup_response, generate_ai_bio_handle, fetch_account_by_username, get_expert_debate_response, infer_genders_from_names
 from api.newspaper import generate_newspaper_articles
+from api.streaming_utils import async_to_sync_stream_generator, create_streaming_response
 
 
 def test():
@@ -369,40 +369,8 @@ class GrokathonViewSet(viewsets.GenericViewSet):
     )
     def generate_ai_bio_handle(self, request):
         handle = request.GET.get("handle")
-
-        def stream_generator():
-            """Convert async generator to sync generator for StreamingHttpResponse"""
-            async def run_stream():
-                async for chunk in generate_ai_bio_handle(handle):
-                    yield chunk
-            
-            # Create a new event loop for this thread
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-            try:
-                # Run the async generator
-                async_gen = run_stream()
-                while True:
-                    try:
-                        chunk = loop.run_until_complete(async_gen.__anext__())
-                        # StreamingHttpResponse expects bytes
-                        if isinstance(chunk, str):
-                            yield chunk.encode('utf-8')
-                        else:
-                            yield chunk
-                    except StopAsyncIteration:
-                        break
-            finally:
-                loop.close()
-        
-        response = StreamingHttpResponse(
-            stream_generator(),
-            content_type='text/plain; charset=utf-8'
-        )
-        response['Cache-Control'] = 'no-cache'
-        response['X-Accel-Buffering'] = 'no'  # Disable buffering in nginx
-        return response
+        generator = async_to_sync_stream_generator(generate_ai_bio_handle, handle)
+        return create_streaming_response(generator)
 
     @action(
         detail=False,
@@ -432,40 +400,9 @@ class GrokathonViewSet(viewsets.GenericViewSet):
                 {"error": "Missing required parameters: input_query, expert_category, and ids"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        def stream_generator():
-            """Convert async generator to sync generator for StreamingHttpResponse"""
-            async def run_stream():
-                async for chunk in get_expert_category_perspective(input_query, expert_category, ids):
-                    yield chunk
-            
-            # Create a new event loop for this thread
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-            try:
-                # Run the async generator
-                async_gen = run_stream()
-                while True:
-                    try:
-                        chunk = loop.run_until_complete(async_gen.__anext__())
-                        # StreamingHttpResponse expects bytes
-                        if isinstance(chunk, str):
-                            yield chunk.encode('utf-8')
-                        else:
-                            yield chunk
-                    except StopAsyncIteration:
-                        break
-            finally:
-                loop.close()
-        
-        response = StreamingHttpResponse(
-            stream_generator(),
-            content_type='text/plain; charset=utf-8'
-        )
-        response['Cache-Control'] = 'no-cache'
-        response['X-Accel-Buffering'] = 'no'  # Disable buffering in nginx
-        return response
+
+        generator = async_to_sync_stream_generator(get_expert_category_perspective, input_query, expert_category, ids)
+        return create_streaming_response(generator)
 
     @action(
         detail=False,
@@ -494,40 +431,9 @@ class GrokathonViewSet(viewsets.GenericViewSet):
                 {"error": "Missing required parameters: input_query and ids"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        def stream_generator():
-            """Convert async generator to sync generator for StreamingHttpResponse"""
-            async def run_stream():
-                async for chunk in get_expert_overview(input_query, ids):
-                    yield chunk
-            
-            # Create a new event loop for this thread
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-            try:
-                # Run the async generator
-                async_gen = run_stream()
-                while True:
-                    try:
-                        chunk = loop.run_until_complete(async_gen.__anext__())
-                        # StreamingHttpResponse expects bytes
-                        if isinstance(chunk, str):
-                            yield chunk.encode('utf-8')
-                        else:
-                            yield chunk
-                    except StopAsyncIteration:
-                        break
-            finally:
-                loop.close()
-        
-        response = StreamingHttpResponse(
-            stream_generator(),
-            content_type='text/plain; charset=utf-8'
-        )
-        response['Cache-Control'] = 'no-cache'
-        response['X-Accel-Buffering'] = 'no'  # Disable buffering in nginx
-        return response
+
+        generator = async_to_sync_stream_generator(get_expert_overview, input_query, ids)
+        return create_streaming_response(generator)
 
     @action(
         detail=False,
@@ -582,46 +488,16 @@ class GrokathonViewSet(viewsets.GenericViewSet):
         
         # Convert ids to integers if they're strings
         ids = [int(id_val) if isinstance(id_val, str) else id_val for id_val in ids]
-        
-        def stream_generator():
-            """Convert async generator to sync generator for StreamingHttpResponse"""
-            async def run_stream():
-                async for chunk in get_followup_response(
-                    followup_question,
-                    conversation_history,
-                    input_query,
-                    ids,
-                    expert_category
-                ):
-                    yield chunk
-            
-            # Create a new event loop for this thread
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-            try:
-                # Run the async generator
-                async_gen = run_stream()
-                while True:
-                    try:
-                        chunk = loop.run_until_complete(async_gen.__anext__())
-                        # StreamingHttpResponse expects bytes
-                        if isinstance(chunk, str):
-                            yield chunk.encode('utf-8')
-                        else:
-                            yield chunk
-                    except StopAsyncIteration:
-                        break
-            finally:
-                loop.close()
-        
-        response = StreamingHttpResponse(
-            stream_generator(),
-            content_type='text/plain; charset=utf-8'
+
+        generator = async_to_sync_stream_generator(
+            get_followup_response,
+            followup_question,
+            conversation_history,
+            input_query,
+            ids,
+            expert_category
         )
-        response['Cache-Control'] = 'no-cache'
-        response['X-Accel-Buffering'] = 'no'  # Disable buffering in nginx
-        return response
+        return create_streaming_response(generator)
 
     @action(
         detail=False,
@@ -687,45 +563,18 @@ class GrokathonViewSet(viewsets.GenericViewSet):
                 {"error": "Missing required parameters: question, expert_name, expert_username"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        def stream_generator():
-            """Convert async generator to sync generator for StreamingHttpResponse"""
-            async def run_stream():
-                async for chunk in get_expert_debate_response(
-                    question=question,
-                    expert_name=expert_name,
-                    expert_username=expert_username,
-                    expert_role=expert_role or "Expert",
-                    expert_posts=expert_posts,
-                    conversation_history=conversation_history,
-                    is_first_speaker=is_first_speaker
-                ):
-                    yield chunk
-            
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-            try:
-                async_gen = run_stream()
-                while True:
-                    try:
-                        chunk = loop.run_until_complete(async_gen.__anext__())
-                        if isinstance(chunk, str):
-                            yield chunk.encode('utf-8')
-                        else:
-                            yield chunk
-                    except StopAsyncIteration:
-                        break
-            finally:
-                loop.close()
-        
-        response = StreamingHttpResponse(
-            stream_generator(),
-            content_type='text/plain; charset=utf-8'
+
+        generator = async_to_sync_stream_generator(
+            get_expert_debate_response,
+            question=question,
+            expert_name=expert_name,
+            expert_username=expert_username,
+            expert_role=expert_role or "Expert",
+            expert_posts=expert_posts,
+            conversation_history=conversation_history,
+            is_first_speaker=is_first_speaker
         )
-        response['Cache-Control'] = 'no-cache'
-        response['X-Accel-Buffering'] = 'no'
-        return response
+        return create_streaming_response(generator)
 
     # ==================== xAI Voice API Endpoints ====================
     
@@ -871,17 +720,16 @@ class GrokathonViewSet(viewsets.GenericViewSet):
             """Stream audio chunks from xAI TTS."""
             for chunk in text_to_speech_stream(text, voice_id=voice):
                 yield chunk
-        
-        response = StreamingHttpResponse(
+
+        return create_streaming_response(
             stream_generator(),
-            content_type='audio/pcm'
+            content_type='audio/pcm',
+            **{
+                'X-Audio-Sample-Rate': '24000',
+                'X-Audio-Channels': '1',
+                'X-Audio-Format': 'linear16'
+            }
         )
-        response['Cache-Control'] = 'no-cache'
-        response['X-Accel-Buffering'] = 'no'
-        response['X-Audio-Sample-Rate'] = '24000'
-        response['X-Audio-Channels'] = '1'
-        response['X-Audio-Format'] = 'linear16'
-        return response
 
     @action(
         detail=False,
