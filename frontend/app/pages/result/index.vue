@@ -135,7 +135,7 @@ import useDataStore from '~/stores/useDataStore'
 
 const config = useRuntimeConfig()
 const route = useRoute()
-const { fetchIds, fetchAccounts, fetchSize, fetchPosts } = useData()
+const { fetchIds, fetchTimelinePosts, fetchAccounts, fetchSize, fetchPosts } = useData()
 // Account type (must match ExampleIndex)
 interface SelectedAccountData {
   id: string
@@ -238,6 +238,7 @@ const handleSearch = async () => {
     await fetchAccounts();
     await fetchSize();
     await fetchPosts();
+    await fetchTimelinePosts();
 
 
     // Stay on current tab, but if on account/debate view, go back to a main tab

@@ -3,7 +3,7 @@ import type { ApiAccount, ApiPost } from '~/types/types';
 
 export default () => {
   const config = useRuntimeConfig()
-  const { ids, accountsLoading, keyword, accounts, communitySize, communitySizeLoading, posts, postsLoading, loading, error  } = storeToRefs(useDataStore())
+  const { ids, timelinePosts, timelinePostsLoading, accountsLoading, keyword, accounts, communitySize, communitySizeLoading, posts, postsLoading, loading, error  } = storeToRefs(useDataStore())
 
   async function fetchIds() {
     try {
@@ -20,7 +20,6 @@ export default () => {
     } finally {
 
     }
-    
   }
 
   async function fetchAccounts() {
@@ -41,8 +40,6 @@ export default () => {
     } finally {
       accountsLoading.value = false;
     }
-
-    
   }
 
   async function fetchSize() {
@@ -64,9 +61,27 @@ export default () => {
       console.error('No communitySize found')
     } finally {
       communitySizeLoading.value = false;
-    }
+    } 
+  }
 
-    
+  async function fetchTimelinePosts() {
+    if (!ids.value || ids.value.length === 0) return;
+
+    try {
+      timelinePostsLoading.value = true;
+      const idsParams = ids.value?.slice(0, 50).map((id: string) => `ids=${id}`).join('&');
+      const postsResponse = await $fetch<{ posts: ApiPost[] }>(
+        `${config.public.apiBase}/grokathon/fetch-posts-timeline/?${idsParams}`
+      )
+      
+      if (postsResponse.posts && postsResponse.posts.length > 0) {
+        timelinePosts.value = postsResponse.posts;
+      }
+    } catch (err) {
+
+    } finally {
+      timelinePostsLoading.value = false;
+    }
   }
 
   async function fetchPosts() {
@@ -94,5 +109,6 @@ export default () => {
     fetchAccounts,
     fetchSize,
     fetchPosts,
+    fetchTimelinePosts,
   }
 }

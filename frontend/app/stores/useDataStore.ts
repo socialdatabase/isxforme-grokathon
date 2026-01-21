@@ -21,6 +21,10 @@ export default defineStore(STORE_KEY, () => {
   const posts = ref<ApiPost[]>();
   const postsLoading = ref<boolean>(false);
 
+  const timelinePosts = ref<ApiPost[]>();
+  const timelinePostsLoading = ref<boolean>(false);
+
+
   return {
     ids,
     inferredTopic,
@@ -33,5 +37,7 @@ export default defineStore(STORE_KEY, () => {
     loading, 
     error,
     accountsLoading,
+    timelinePosts,
+    timelinePostsLoading,
   }
 });

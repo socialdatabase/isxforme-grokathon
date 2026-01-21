@@ -114,9 +114,7 @@
 
 <script setup lang="ts">
 import useDataStore from '~/stores/useDataStore';
-import type { ApiAccount, ApiPost } from '~/types/types';
 
-const config = useRuntimeConfig()
 
 const emit = defineEmits<{
   (e: 'switch-to-timeline'): void
@@ -128,7 +126,7 @@ interface ImageDisplay {
   error?: boolean
 }
 
-const { posts, loading, error, postsLoading, accounts, inferredTopic, keyword, communitySizeLoading, communitySize} = storeToRefs(useDataStore())
+const { posts, loading, postsLoading, accounts, keyword, communitySizeLoading, communitySize} = storeToRefs(useDataStore())
 
 
 // Images data

@@ -27,6 +27,7 @@ export interface ApiPost {
   account: {
     id: string
     username: string
+    name: string
     verified: boolean | null
     profile_image_url: string | null
   }
