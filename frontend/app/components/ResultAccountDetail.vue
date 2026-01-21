@@ -35,8 +35,8 @@
         </div>
         <div class="account-handle">@{{ account.username }}</div>
         <div class="account-stats">
-          <span class="stat"><strong>{{ account.public_metrics.followers_count }}</strong> followers</span>
-          <span class="stat"><strong>{{ account.public_metrics.following_count }}</strong> following</span>
+          <span class="stat"><strong>{{ formatFollowers(account.public_metrics.followers_count) }}</strong> followers</span>
+          <span class="stat"><strong>{{ formatFollowers(account.public_metrics.following_count) }}</strong> following</span>
         </div>
         <p v-if="account.description" class="account-bio">{{ account.description }}</p>
       </div>
@@ -189,6 +189,16 @@ const handleHandleSubmit = () => {
     const cleanHandle = newHandle.startsWith('@') ? newHandle : `@${newHandle}`
     emit('changeHandle', cleanHandle)
   }
+}
+
+// Format followers count
+const formatFollowers = (count: number): string => {
+  if (count >= 1000000) {
+    return (count / 1000000).toFixed(1) + 'M'
+  } else if (count >= 1000) {
+    return (count / 1000).toFixed(1) + 'K'
+  }
+  return count.toString()
 }
 
 // Fetch interests and rankings from API using handle

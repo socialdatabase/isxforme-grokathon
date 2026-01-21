@@ -127,6 +127,8 @@
 </template>
 
 <script setup lang="ts">
+import type { ApiPost } from '~/types/types';
+
 const config = useRuntimeConfig()
 
 const props = defineProps<{
@@ -170,26 +172,6 @@ interface ContentPost {
   photo: string | null
 }
 
-interface ApiPost {
-  post: {
-    id: string
-    text: string
-    created_at: string
-    account_id: string
-    retweet_count: number | null
-    reply_count: number | null
-    like_count: number | null
-    impression_count: number | null
-    media: any[] | null
-  }
-  account: {
-    id: string
-    username: string
-    verified: boolean | null
-    profile_image_url: string | null
-  }
-}
-
 const entitiesOpen = ref(false)
 const sourcesOpen = ref(false)
 const isTyping = ref(false)
@@ -204,8 +186,7 @@ const totalEntitiesCount = ref(0)
 const loadingGrokResponse = ref(false)
 const grokResponseLoaded = ref(false)
 
-// Inferred topic from the keyword (cleaner display name)
-const currentTopic = ref<string>('')
+const { posts, inferredTopic, ids, postsLoading, accounts, keyword, communitySizeLoading, communitySize} = storeToRefs(useDataStore())
 
 // Conversation history for follow-up questions
 interface ConversationMessage {
@@ -216,7 +197,7 @@ const conversationHistory = ref<ConversationMessage[]>([])
 
 // Computed for dynamic question based on topic and selected expert view
 const currentQuestion = computed(() => {
-  const topic = currentTopic.value || props.keyword
+  const topic = inferredTopic.value || keyword.value
   if (!topic) return 'Waiting for topic...'
   if (selectedExpertView.value) {
     return `What's the latest from ${selectedExpertView.value} on ${topic}?`
@@ -306,56 +287,28 @@ const fetchExpertCategories = async (ids: string[]) => {
 }
 
 // Fetch accounts from API
-const fetchEntities = async (keyword: string) => {
+const fetchEntities = async () => {
   loadingEntities.value = true
-  currentTopic.value = keyword // Temporary fallback while loading
+  inferredTopic.value = keyword.value // Temporary fallback while loading
   allEntityAccounts.value = []
   allEntityIds.value = []
   expertCategories.value = []
 
   try {
-    // Step 1: Fetch IDs and infer topic in parallel
-    const [idsResponse, topicResponse] = await Promise.all([
-      $fetch<{ ids: string[] }>(
-        `${config.public.apiBase}/grokathon/fetch-ids/?input_query=${encodeURIComponent(keyword)}`
-      ),
-      $fetch<{ topic: string | null }>(
-        `${config.public.apiBase}/grokathon/infer-topic-in-query/?input_query=${encodeURIComponent(keyword)}`
-      ).catch(() => ({ topic: null })) // Fallback if topic inference fails
-    ])
-
-    // Update currentTopic with the inferred topic (or keep keyword as fallback)
-    if (topicResponse.topic) {
-      currentTopic.value = topicResponse.topic
-    }
-
-    if (!idsResponse.ids || idsResponse.ids.length === 0) {
-      return
-    }
 
     // Store total count for display
-    totalEntitiesCount.value = idsResponse.ids.length
+    totalEntitiesCount.value = ids.value?.length ?? 0
 
     // Store top 100 IDs for expert categories
-    allEntityIds.value = idsResponse.ids.slice(0, 100)
+    allEntityIds.value = ids.value?.slice(0, 100) ?? []
 
-    // Take up to 25 IDs for the entity list display
-    const idsToFetch = idsResponse.ids.slice(0, 25)
-
-    // Step 2: Fetch account details
-    const idsParams = idsToFetch.map((id: string) => `ids=${id}`).join('&')
-    const accountsResponse = await $fetch<{ accounts: ApiAccount[] }>(
-      `${config.public.apiBase}/grokathon/fetch-accounts/?${idsParams}`
-    )
-
-    if (accountsResponse.accounts && accountsResponse.accounts.length > 0) {
-      allEntityAccounts.value = accountsResponse.accounts.map((acc: ApiAccount) => ({
-        id: acc.id,
-        displayName: acc.name,
-        username: acc.username,
-        avatar: acc.profile_image_url || ''
-      }))
-    }
+    allEntityAccounts.value = accounts.value?.slice(0, 25).map((acc: ApiAccount) => ({
+      id: acc.id,
+      displayName: acc.name,
+      username: acc.username,
+      avatar: acc.profile_image_url || ''
+    })) ?? []
+    
 
     // Step 3: Fetch expert categories with top 100 IDs
     await fetchExpertCategories(allEntityIds.value)
@@ -393,9 +346,9 @@ const fetchContentPosts = async (ids: string[]) => {
           let photo: string | null = null
           if (item.post.media && item.post.media.length > 0) {
             const firstMedia = item.post.media[0]
-            if (firstMedia.url) {
+            if (firstMedia?.url) {
               photo = firstMedia.url
-            } else if (firstMedia.preview_image_url) {
+            } else if (firstMedia?.preview_image_url) {
               photo = firstMedia.preview_image_url
             }
           }
@@ -453,7 +406,7 @@ const streamGrokOverview = async (ids: string[]) => {
   if (ids.length === 0 || grokResponseLoaded.value || !props.keyword) return
   
   const keyword = props.keyword
-  const topic = currentTopic.value || keyword
+  const topic = inferredTopic.value || keyword
   loadingGrokResponse.value = true
   isTyping.value = true
   displayedResponse.value = ''
@@ -508,7 +461,7 @@ const streamExpertPerspective = async (category: string, ids: number[]) => {
   if (ids.length === 0 || !props.keyword) return
   
   const keyword = props.keyword
-  const topic = currentTopic.value || keyword
+  const topic = inferredTopic.value || keyword
   isTyping.value = true
   displayedResponse.value = ''
   
@@ -618,9 +571,9 @@ const fetchCategoryPosts = async (categoryName: string) => {
           let photo: string | null = null
           if (item.post.media && item.post.media.length > 0) {
             const firstMedia = item.post.media[0]
-            if (firstMedia.url) {
+            if (firstMedia?.url) {
               photo = firstMedia.url
-            } else if (firstMedia.preview_image_url) {
+            } else if (firstMedia?.preview_image_url) {
               photo = firstMedia.preview_image_url
             }
           }
@@ -767,20 +720,19 @@ watch(() => props.isActive, (active: boolean) => {
 }, { immediate: true })
 
 // Watch for keyword changes - fetch entities even when not active (for pre-loading)
-watch(() => props.keyword, async (newKeyword: string | undefined) => {
-  // Don't fetch if no keyword
-  if (!newKeyword) {
+watch(() => ids.value, async () => {
+  // Don't fetch if no ids
+  if (!ids.value) {
     loadingEntities.value = false
     loadingCategories.value = false
     loadingPosts.value = false
     return
   }
-  
-  const keyword = newKeyword
+
   
   // Only fetch if keyword has changed
-  if (keyword !== lastFetchedKeyword.value) {
-    lastFetchedKeyword.value = keyword
+  if (keyword.value !== lastFetchedKeyword.value) {
+    lastFetchedKeyword.value = keyword.value
     
     // Clear any selected expert view when keyword changes
     selectedExpertView.value = null
@@ -790,7 +742,7 @@ watch(() => props.keyword, async (newKeyword: string | undefined) => {
     grokResponseLoaded.value = false
     
     // Fetch entities for new keyword
-    await fetchEntities(keyword)
+    await fetchEntities()
     
     // If active and entities loaded, stream the Grok response
     if (props.isActive && allEntityIds.value.length > 0) {

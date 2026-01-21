@@ -3,7 +3,7 @@ import type { ApiAccount, ApiPost } from '~/types/types';
 
 export default () => {
   const config = useRuntimeConfig()
-  const { ids, timelinePosts, timelinePostsLoading, accountsLoading, keyword, accounts, communitySize, communitySizeLoading, posts, postsLoading, loading, error  } = storeToRefs(useDataStore())
+  const { ids, inferredTopic, timelinePosts, timelinePostsLoading, accountsLoading, keyword, accounts, communitySize, communitySizeLoading, posts, postsLoading, loading, error  } = storeToRefs(useDataStore())
 
   async function fetchIds() {
     try {
@@ -105,9 +105,12 @@ export default () => {
   }
 
   async function inferTopic() {
-    $fetch<{ topic: string | null }>(
+    const topicResponse = await $fetch<{ topic: string | null }>(
         `${config.public.apiBase}/grokathon/infer-topic-in-query/?input_query=${encodeURIComponent(keyword.value)}`
     )
+     if (topicResponse.topic) {
+      inferredTopic.value = topicResponse.topic
+    }
   }
 
   return {
@@ -116,5 +119,6 @@ export default () => {
     fetchSize,
     fetchPosts,
     fetchTimelinePosts,
+    inferTopic,
   }
 }

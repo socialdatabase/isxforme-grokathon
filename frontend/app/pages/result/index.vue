@@ -102,12 +102,12 @@
 
     <!-- GrokSignal Tab Content (use v-show for preloading) -->
     <div v-show="activeTab === 'groksignal'" class="tab-content">
-      <ResultGrokSignal :is-active="activeTab === 'groksignal'" :keyword="searchKeyword" @start-debate="switchToDebate" />
+      <ResultGrokSignal :is-active="activeTab === 'groksignal'" :keyword @start-debate="switchToDebate" />
     </div>
 
     <!-- Expert Debate Tab Content -->
     <div v-if="activeTab === 'debate'" class="tab-content">
-      <ResultExpertDebate :is-active="activeTab === 'debate'" :keyword="searchKeyword" />
+      <ResultExpertDebate :is-active="activeTab === 'debate'" :keyword />
     </div>
 
     <!-- The Grok Times Overlay -->
@@ -136,7 +136,7 @@ import type { ApiAccount } from '~/types/types'
 
 const config = useRuntimeConfig()
 const route = useRoute()
-const { fetchIds, fetchTimelinePosts, fetchAccounts, fetchSize, fetchPosts } = useData()
+const { fetchIds, inferTopic, fetchTimelinePosts, fetchAccounts, fetchSize, fetchPosts } = useData()
 // Account type (must match ExampleIndex)
 interface SelectedAccountData {
   id: string
@@ -235,11 +235,12 @@ const handleSearch = async () => {
   if (searchInput.value.trim()) {
     keyword.value = searchInput.value.trim()
 
+    await inferTopic();
     await fetchIds();
-    await fetchAccounts();
-    await fetchSize();
-    await fetchPosts();
-    await fetchTimelinePosts();
+    fetchSize();
+    fetchAccounts();
+    fetchPosts();
+    fetchTimelinePosts();
 
 
     // Stay on current tab, but if on account/debate view, go back to a main tab
@@ -267,36 +268,16 @@ const backToIndex = () => {
 
 const handleChangeHandle = async (newHandle: string) => {
   try {
-    const response = await $fetch<{ account: any }>(
+    const response = await $fetch<{ account: ApiAccount }>(
       `${config.public.apiBase}/grokathon/fetch-account-handle/?handle=${encodeURIComponent(newHandle)}`
     )
     
     if (response.account) {
-      const acc = response.account
-      selectedAccount.value = {
-        id: acc.id,
-        displayName: acc.name || acc.username,
-        username: acc.username,
-        avatar: acc.profile_image_url || '',
-        followers: formatFollowers(acc.public_metrics?.followers_count || 0),
-        following: formatFollowers(acc.public_metrics?.following_count || 0),
-        verified: acc.verified || false,
-        description: acc.description || ''
-      }
+      selectedAccount.value = response.account;
     }
   } catch (err) {
     console.error('Error fetching account by handle:', err)
   }
-}
-
-// Format followers count
-const formatFollowers = (count: number): string => {
-  if (count >= 1000000) {
-    return (count / 1000000).toFixed(1) + 'M'
-  } else if (count >= 1000) {
-    return (count / 1000).toFixed(1) + 'K'
-  }
-  return count.toString()
 }
 
 // Compute search bar width class based on active tab
