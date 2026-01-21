@@ -480,11 +480,8 @@ onMounted(() => {
 }
 
 .highlight-cta {
-  color: #1d9bf0;
+  color: #e7e9ea;
   font-weight: 600;
-  background: linear-gradient(90deg, rgba(29, 155, 240, 0.15), rgba(29, 155, 240, 0.05));
-  padding: 2px 6px;
-  border-radius: 4px;
 }
 
 .audience-stats {
