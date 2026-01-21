@@ -71,7 +71,7 @@
           <div class="wtf-spinner"></div>
         </div>
         <div v-else class="wtf-list">
-          <div v-for="(account, index) in accounts" :key="account.username" class="wtf-item">
+          <div v-for="(account, index) in accounts?.slice(0, 20)" :key="account.username" class="wtf-item">
             <div class="wtf-avatar">
               <img :src="account.profile_image_url" :alt="account.name" />
             </div>

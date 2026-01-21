@@ -27,7 +27,7 @@ export default () => {
 
     try {
       accountsLoading.value = true;
-      const idsParams = ids.value?.slice(0, 50).map((id: string) => `ids=${id}`).join('&');
+      const idsParams = ids.value?.slice(0, 100).map((id: string) => `ids=${id}`).join('&');
       const accountsResponse = await $fetch<{ accounts: ApiAccount[] }>(
         `${config.public.apiBase}/grokathon/fetch-accounts/?${idsParams}`
       )
@@ -102,6 +102,12 @@ export default () => {
     } finally {
       postsLoading.value = false;
     }
+  }
+
+  async function inferTopic() {
+    $fetch<{ topic: string | null }>(
+        `${config.public.apiBase}/grokathon/infer-topic-in-query/?input_query=${encodeURIComponent(keyword.value)}`
+    )
   }
 
   return {

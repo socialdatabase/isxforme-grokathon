@@ -132,6 +132,7 @@ import ResultOverview from '~/components/ResultOverview.vue'
 import ResultTimeline from '~/components/ResultTimeline.vue'
 import useData from '~/composables/useData'
 import useDataStore from '~/stores/useDataStore'
+import type { ApiAccount } from '~/types/types'
 
 const config = useRuntimeConfig()
 const route = useRoute()
@@ -152,7 +153,7 @@ const showTabs = ref(false)
 const showStars = ref(true)
 const activeTabUi = ref<'overview' | 'timeline' | 'groksignal' | 'index'>('overview')
 const activeTab = ref<'overview' | 'timeline' | 'groksignal' | 'index' | 'account' | 'debate'>('overview')
-const selectedAccount = ref<SelectedAccountData | null>(null)
+const selectedAccount = ref<ApiAccount | null>(null)
 // const searchKeyword = ref('') // Start empty, will be set from query
 const searchInput = ref('') // Input field value
 const podcastMode = ref(false)
@@ -253,7 +254,7 @@ const handleSearch = async () => {
   }
 }
 
-const handleAccountSelect = (account: SelectedAccountData) => {
+const handleAccountSelect = (account: ApiAccount) => {
   selectedAccount.value = account
   activeTab.value = 'account'
   window.scrollTo({ top: 0, behavior: 'smooth' })

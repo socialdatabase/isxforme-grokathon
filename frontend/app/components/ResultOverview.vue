@@ -20,7 +20,7 @@
           Accounts to follow
         </h2>
         <div class="px-6! pb-6! accounts-grid">
-          <div v-for="account in accounts" :key="account.username" class="account-item">
+          <div v-for="account in accounts.slice(0, 20)" :key="account.username" class="account-item">
             <div class="account-avatar">
               <img :src="account.profile_image_url.replace('_normal', '_400x400')" :alt="account.name" />
             </div>
@@ -49,7 +49,7 @@
           <img
             v-for="(image, index) in images"
             :key="index"
-            :src="image.url"
+            :src="image"
             alt="Visual highlight"
             class="w-full mb-4! rounded-md break-inside-avoid"
             loading="lazy"
@@ -120,17 +120,12 @@ const emit = defineEmits<{
   (e: 'switch-to-timeline'): void
 }>()
 
-interface ImageDisplay {
-  url: string
-  size: 'normal' | 'wide' | 'tall' | 'large'
-  error?: boolean
-}
 
 const { posts, loading, postsLoading, accounts, keyword, communitySizeLoading, communitySize} = storeToRefs(useDataStore())
 
 
 // Images data
-const images = ref<ImageDisplay[]>([])
+const images = ref<string[]>([])
 
 // Tweets/conversations data
 interface TweetDisplay {
@@ -153,16 +148,6 @@ const formatFollowers = (count: number): string => {
 const formatNumber = (num: number | null | undefined): string => {
   if (num === null || num === undefined) return '0'
   return num.toLocaleString()
-}
-
-// Assign varied sizes to images for grid layout
-const assignImageSizes = (urls: string[]): ImageDisplay[] => {
-  const sizes: Array<'normal' | 'wide' | 'tall' | 'large'> = ['normal', 'wide', 'tall', 'large', 'normal', 'normal', 'wide', 'normal', 'tall', 'normal', 'normal', 'normal']
-  return urls.map((url, index) => ({
-    url,
-    size: sizes[index % sizes.length],
-    error: false
-  }))
 }
 
 watch(posts, (newPosts) => {
@@ -189,7 +174,8 @@ watch(posts, (newPosts) => {
 
   if (mediaUrls.length > 0) {
     // Assign sizes and limit to 50 images
-    images.value = assignImageSizes(mediaUrls.slice(0, 50))
+    images.value = mediaUrls.slice(0, 50)
+    // images.value = assignImageSizes(mediaUrls.slice(0, 50))
   } 
 }, { immediate: true })
 
