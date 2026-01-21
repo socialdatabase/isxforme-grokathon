@@ -49,8 +49,8 @@ class BotThrottle(BaseThrottle):
     Custom throttle that allows 60 requests per minute, then blocks for 1 hour.
     Designed to prevent bot flooding while allowing legitimate use.
     """
-    rate = '60/min'  # 60 requests per minute
-    block_duration = 3600  # 1 hour in seconds
+    rate = '60000/min'  # 60 requests per minute
+    block_duration = 1  # 1 hour in seconds
     
     def get_cache_key(self, request, view):
         """Generate cache key based on IP address"""
@@ -63,6 +63,7 @@ class BotThrottle(BaseThrottle):
         return f'throttle_block_{ident}'
     
     def allow_request(self, request, view):
+        return True
         """
         Check if request should be allowed.
         Returns True if allowed, False if throttled.

@@ -9,7 +9,7 @@
     <template v-else>
       <!-- Stats Card -->
       <section class="stats-card">
-        <div class="stats-number" :class="{ 'loading': sizeLoading }">{{ communitySize }}</div>
+        <div class="stats-number" :class="{ 'loading': communitySizeLoading }">{{ communitySize }}</div>
         <div class="stats-label">people interested in <span class="keyword-highlight">{{ keyword }}</span> on X</div>
       </section>
 
@@ -42,7 +42,7 @@
       <h2 class="section-title m-0! p-6! top-0 sticky z-10 bg-blur">
         <span class="title-bar"></span>
         Visual highlights from X
-        <span v-if="imagesLoading" class="loading-indicator">Loading...</span>
+        <span v-if="postsLoading" class="loading-indicator">Loading...</span>
         
       </h2>
       <div class="px-6! pb-6! columns-1 sm:columns-2 lg:columns-3 gap-4">
@@ -114,7 +114,7 @@
 
 <script setup lang="ts">
 import useDataStore from '~/stores/useDataStore';
-import type { ApiAccount } from '~/types/types';
+import type { ApiAccount, ApiPost } from '~/types/types';
 
 const config = useRuntimeConfig()
 
@@ -122,57 +122,17 @@ const emit = defineEmits<{
   (e: 'switch-to-timeline'): void
 }>()
 
-// Loading and error states
-const loading = ref(false)
-const sizeLoading = ref(false)
-const error = ref<string | null>(null)
-
-// Community size
-const communitySize = ref<string>('--')
-
-// Types
-interface AccountDisplay {
-  name: string
-  handle: string
-  followers: string
-  verified: boolean
-  avatar: string
-}
-
-interface ApiPost {
-  post: {
-    id: string
-    text: string
-    created_at: string
-    account_id: string
-    retweet_count: number | null
-    reply_count: number | null
-    like_count: number | null
-    impression_count: number | null
-    media: Array<{ url?: string; preview_image_url?: string; type?: string }> | null
-  }
-  account: {
-    id: string
-    username: string
-    verified: boolean | null
-    profile_image_url: string | null
-  }
-}
-
 interface ImageDisplay {
   url: string
   size: 'normal' | 'wide' | 'tall' | 'large'
   error?: boolean
 }
 
-const { ids, accounts, inferredTopic, keyword} = storeToRefs(useDataStore())
+const { posts, loading, error, postsLoading, accounts, inferredTopic, keyword, communitySizeLoading, communitySize} = storeToRefs(useDataStore())
 
-// Accounts data
-// const accounts = ref<AccountDisplay[]>([])
 
 // Images data
 const images = ref<ImageDisplay[]>([])
-const imagesLoading = ref(false)
 
 // Tweets/conversations data
 interface TweetDisplay {
@@ -183,47 +143,6 @@ interface TweetDisplay {
   views: string
 }
 const tweets = ref<TweetDisplay[]>([])
-
-// Fallback F1 images (used when API fails or for F1 keyword)
-const fallbackF1Images: ImageDisplay[] = [
-  { url: 'https://f1chronicle.com/wp-content/uploads/2024/01/SI202412010400-1920x1080.jpg', size: 'normal' },
-  { url: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTmwCYq7k6P-BUzdkHiXoypKKzubkcHfSQS7haStcWhvyf27tgzeeqyyF2iU5gPGLEyXaA&usqp=CAU', size: 'wide' },
-  { url: 'https://media.formula1.com/image/upload/f_auto,c_limit,w_1440,q_auto/f_auto/q_auto/fom-website/Campaign/BGT/BGT%20Everything', size: 'tall' },
-  { url: 'https://cdn-7.motorsport.com/images/amp/2d1Zz5LY/s1000/max-verstappen-red-bull-racing.jpg', size: 'large' },
-  { url: 'https://cdn.mos.cms.futurecdn.net/qe8W2K7rMNLVTbim6hiXpS.jpg', size: 'normal' },
-  { url: 'https://e0.365dm.com/22/03/1600x900/skysports-f1-2022-driver-preview_5706316.jpg?20220314161233', size: 'normal' },
-  { url: 'https://www.racefans.net/wp-content/uploads/2023/02/racefansdotnet-23-02-23-06-14-48-3.jpg', size: 'wide' },
-  { url: 'https://r.testifier.nl/Acbs8526SDKI/resizing_type:fill/width:3840/height:2560/plain/https://s3-newsifier.ams3.digitaloceanspaces.com/gpblog.com/images/2025-04/20250420-0669-680f7ee454279.jpg@webp', size: 'normal' },
-  { url: 'https://cdn-4.motorsport.com/images/amp/2d1QlRDY/s6/formula-1-emilia-romagna-gp-20-1006067.jpg', size: 'tall' },
-  { url: 'https://img.redbull.com/images/c_crop,x_0,y_1,h_3143,w_4715/c_fill,w_450,h_300/q_auto:low,f_auto/redbullcom/2024/9/4/hvrmsd1slsrlc2uvj3b7/formula-one-car', size: 'normal' },
-  { url: 'https://f1chronicle.com/wp-content/uploads/2024/01/SI202412010400-1920x1080.jpg', size: 'normal' },
-  { url: 'https://cdn-7.motorsport.com/images/amp/2d1Zz5LY/s1000/max-verstappen-red-bull-racing.jpg', size: 'normal' },
-]
-
-// Fallback F1 tweets (used when API fails or for F1 keyword)
-const fallbackF1Tweets: TweetDisplay[] = [
-  {
-    text: "That last lap battle between Hamilton and Verstappen was absolutely incredible! Best race of the season so far! #F1 #MonacoGP",
-    likes: '1,243',
-    comments: '89',
-    retweets: '356',
-    views: '28,500'
-  },
-  {
-    text: "Breaking: Ferrari announces major upgrades for the next race. Could this be the turning point of their season? #F1 #ScuderiaFerrari",
-    likes: '876',
-    comments: '124',
-    retweets: '231',
-    views: '15,700'
-  },
-  {
-    text: "The weather forecast for Sunday's race looks unpredictable. Rain could definitely mix things up! #F1 #WeatherWatch",
-    likes: '542',
-    comments: '67',
-    retweets: '98',
-    views: '9,800'
-  }
-]
 
 // Format follower count
 const formatFollowers = (count: number): string => {
@@ -238,36 +157,6 @@ const formatNumber = (num: number | null | undefined): string => {
   return num.toLocaleString()
 }
 
-// Format community size
-const formatSize = (count: number): string => {
-  if (count >= 1000000) return (count / 1000000).toFixed(1).replace(/\.0$/, '') + 'M+'
-  if (count >= 1000) return (count / 1000).toFixed(1).replace(/\.0$/, '') + 'K+'
-  return count.toString() + '+'
-}
-
-// Fetch community size from API
-const fetchCommunitySize = async (ids: string[]) => {
-  if (!ids || ids.length === 0) return
-  
-  sizeLoading.value = true
-  try {
-    const idsParams = ids.map((id: string) => `ids=${id}`).join('&')
-    const sizeResponse = await $fetch<{ size: string }>(
-      `${config.public.apiBase}/grokathon/fetch-grokathon-size/?${idsParams}`
-    )
-    
-    if (sizeResponse.size) {
-      // API returns pre-formatted string like '27.9M'
-      communitySize.value = sizeResponse.size + '+'
-    }
-  } catch (err) {
-    console.error('Error fetching community size:', err)
-    // Keep the default value on error
-  } finally {
-    sizeLoading.value = false
-  }
-}
-
 // Assign varied sizes to images for grid layout
 const assignImageSizes = (urls: string[]): ImageDisplay[] => {
   const sizes: Array<'normal' | 'wide' | 'tall' | 'large'> = ['normal', 'wide', 'tall', 'large', 'normal', 'normal', 'wide', 'normal', 'tall', 'normal', 'normal', 'normal']
@@ -278,132 +167,32 @@ const assignImageSizes = (urls: string[]): ImageDisplay[] => {
   }))
 }
 
-// Handle image load errors
-const handleImageError = (index: number) => {
-  if (images.value[index]) {
-    images.value[index].error = true
+watch(posts, (newPosts) => {
+  if (!newPosts || newPosts.length === 0) {
+    return
   }
-}
 
-// Fetch images from posts API
-const fetchImages = async (ids: string[]) => {
-  if (!ids || ids.length === 0) return
-  
-  imagesLoading.value = true
-  try {
-    const idsParams = ids.map((id: string) => `ids=${id}`).join('&')
-    const postsResponse = await $fetch<{ posts: ApiPost[] }>(
-      `${config.public.apiBase}/grokathon/fetch-posts/?${idsParams}`
-    )
-    
-    if (postsResponse.posts && postsResponse.posts.length > 0) {
-      // Extract media URLs from posts (photos only, not videos)
-      const mediaUrls: string[] = []
-      for (const item of postsResponse.posts) {
-        if (item.post.media && item.post.media.length > 0) {
-          for (const media of item.post.media) {
-            // Only include photos, skip videos
-            if (media.type === 'video' || media.type === 'animated_gif') {
-              continue
-            }
-            const url = media.url || media.preview_image_url
-            if (url && !mediaUrls.includes(url)) {
-              mediaUrls.push(url)
-            }
-          }
+  // Extract media URLs from posts (photos only, not videos)
+  const mediaUrls: string[] = []
+  for (const item of newPosts) {
+    if (item.post.media && item.post.media.length > 0) {
+      for (const media of item.post.media) {
+        // Only include photos, skip videos
+        if (media.type === 'video' || media.type === 'animated_gif') {
+          continue
+        }
+        const url = media.url || media.preview_image_url
+        if (url && !mediaUrls.includes(url)) {
+          mediaUrls.push(url)
         }
       }
-      
-      if (mediaUrls.length > 0) {
-        // Assign sizes and limit to 50 images
-        images.value = assignImageSizes(mediaUrls.slice(0, 50))
-      } else {
-        // No media found, keep fallback
-        images.value = fallbackF1Images
-      }
-      
-      // Extract top 3 posts for conversations section
-      tweets.value = postsResponse.posts.slice(0, 3).map((item: ApiPost) => ({
-        text: item.post.text,
-        likes: formatNumber(item.post.like_count),
-        comments: formatNumber(item.post.reply_count),
-        retweets: formatNumber(item.post.retweet_count),
-        views: formatNumber(item.post.impression_count)
-      }))
-    } else {
-      images.value = fallbackF1Images
-      tweets.value = fallbackF1Tweets
     }
-  } catch (err) {
-    console.error('Error fetching images:', err)
-    // Keep empty on error - no fallback
-  } finally {
-    imagesLoading.value = false
   }
-}
 
-// Fetch accounts from API
-const fetchAccounts = async (keyword: string) => {
-  loading.value = true
-  error.value = null
-  // Reset data while loading
-  accounts.value = []
-  images.value = []
-  tweets.value = []
-  communitySize.value = '--'
-
-  try {
-    // Step 1: Fetch IDs for the keyword (backend returns strings)
-    const idsResponse = await $fetch<{ ids: string[] }>(
-      `${config.public.apiBase}/grokathon/fetch-ids/?input_query=${encodeURIComponent(keyword)}`
-    )
-
-    if (!idsResponse.ids || idsResponse.ids.length === 0) {
-      // No results found
-      error.value = 'No community found for this topic'
-      return
-    }
-
-    // Take first 10 IDs for size calculation and images
-    const idsForSizeAndImages = idsResponse.ids.slice(0, 20)
-    
-    // Take more IDs for accounts (for scrollable list)
-    // Request 50 to show a good scrollable list
-    const idsForAccounts = idsResponse.ids.slice(0, 50)
-
-    // Fetch community size and images with top 10 IDs (in parallel with accounts)
-    fetchCommunitySize(idsForSizeAndImages)
-    fetchImages(idsForAccounts)
-
-    // Step 2: Fetch account details
-    const idsParams = idsForAccounts.map((id: string) => `ids=${id}`).join('&')
-    const accountsResponse = await $fetch<{ accounts: ApiAccount[] }>(
-      `${config.public.apiBase}/grokathon/fetch-accounts/?${idsParams}`
-    )
-
-    if (accountsResponse.accounts && accountsResponse.accounts.length > 0) {
-      // Map API response to our format (keep all accounts for scrollable list)
-      // accounts.value = accountsResponse.accounts.map((acc: ApiAccount) => ({
-      //   name: acc.name,
-      //   handle: acc.username,
-      //   followers: formatFollowers(acc.public_metrics?.followers_count || 0),
-      //   verified: acc.verified || false,
-      //   avatar: acc.profile_image_url?.replace('_normal', '_400x400') || ''
-      // }))
-    }
-  } catch (err) {
-    console.error('Error fetching accounts:', err)
-    error.value = 'Failed to load community data'
-  } finally {
-    loading.value = false
-  }
-}
-
-// Fetch on mount and when keyword changes
-watch(() => keyword.value, (newKeyword: string) => {
-  if (newKeyword) {
-    fetchAccounts(newKeyword)
-  }
+  if (mediaUrls.length > 0) {
+    // Assign sizes and limit to 50 images
+    images.value = assignImageSizes(mediaUrls.slice(0, 50))
+  } 
 }, { immediate: true })
 
 </script>

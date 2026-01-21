@@ -118,7 +118,7 @@
         </svg>
       </button>
       <div class="newspaper-content">
-        <TheGrokTimes :keyword="searchKeyword" />
+        <TheGrokTimes :keyword />
       </div>
     </div>
   </div>
@@ -135,7 +135,7 @@ import useDataStore from '~/stores/useDataStore'
 
 const config = useRuntimeConfig()
 const route = useRoute()
-const { fetchIds } = useData()
+const { fetchIds, fetchAccounts, fetchSize, fetchPosts } = useData()
 // Account type (must match ExampleIndex)
 interface SelectedAccountData {
   id: string
@@ -168,7 +168,6 @@ watch(activeTabUi, () => {
 // Apply query params and reset state for fresh search
 const applyQueryParams = () => {
   const tab = route.query.tab as string
-  const user = route.query.user as string
   const q = route.query.q as string
   
   // Set search keyword from query
@@ -178,7 +177,7 @@ const applyQueryParams = () => {
   } else {
     // Default to F1 if no query
     keyword.value = 'F1'
-    searchInput.value = ''
+    searchInput.value = 'F1'
   }
   
   // Reset to overview for fresh search unless specific tab requested
@@ -236,8 +235,9 @@ const handleSearch = async () => {
     keyword.value = searchInput.value.trim()
 
     await fetchIds();
-    await fet
-    
+    await fetchAccounts();
+    await fetchSize();
+    await fetchPosts();
 
 
     // Stay on current tab, but if on account/debate view, go back to a main tab
@@ -332,6 +332,8 @@ watch(() => route.query.q, (newQ: string | (string | null)[] | null | undefined)
 onMounted(() => {
   applyQueryParams()
   
+  handleSearch();
+
   if (!route.query.tab) {
     // Show shooting stars for 2 seconds, then show message
     setTimeout(() => {
