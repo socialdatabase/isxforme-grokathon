@@ -69,14 +69,14 @@
 
     <!-- Overview Tab Content (use v-show for preloading) -->
     <div v-show="activeTab === 'overview'" class="tab-content">
-      <ResultOverview :keyword="searchKeyword" @switch-to-timeline="switchToTimeline" />
+      <ResultOverview @switch-to-timeline="switchToTimeline" />
     </div>
 
     <!-- Timeline Tab Content (use v-show for preloading) -->
     <div v-show="activeTab === 'timeline'" class="tab-content">
       <ResultTimeline 
         ref="timelineRef"
-        :keyword="searchKeyword" 
+        :keyword 
         :podcast-mode="podcastMode"
         @open-newspaper="openNewspaper"
         @podcast-state-change="(playing: boolean, loading: boolean) => { podcastMode = playing; podcastLoading = loading }"
@@ -86,7 +86,7 @@
     <!-- Index Tab Content (use v-show for preloading) -->
     <div v-show="activeTab === 'index'" class="tab-content">
       <ResultIndex
-        :keyword="searchKeyword"
+        :keyword
         @select-account="handleAccountSelect"
       />
     </div>
@@ -130,10 +130,12 @@ import ResultExpertDebate from '~/components/ResultExpertDebate.vue'
 import ResultGrokSignal from '~/components/ResultGrokSignal.vue'
 import ResultOverview from '~/components/ResultOverview.vue'
 import ResultTimeline from '~/components/ResultTimeline.vue'
+import useData from '~/composables/useData'
+import useDataStore from '~/stores/useDataStore'
 
 const config = useRuntimeConfig()
 const route = useRoute()
-
+const { fetchIds } = useData()
 // Account type (must match ExampleIndex)
 interface SelectedAccountData {
   id: string
@@ -151,11 +153,13 @@ const showStars = ref(true)
 const activeTabUi = ref<'overview' | 'timeline' | 'groksignal' | 'index'>('overview')
 const activeTab = ref<'overview' | 'timeline' | 'groksignal' | 'index' | 'account' | 'debate'>('overview')
 const selectedAccount = ref<SelectedAccountData | null>(null)
-const searchKeyword = ref('') // Start empty, will be set from query
+// const searchKeyword = ref('') // Start empty, will be set from query
 const searchInput = ref('') // Input field value
 const podcastMode = ref(false)
 const podcastLoading = ref(false)
 const showNewspaper = ref(false)
+
+const { keyword } = storeToRefs(useDataStore())
 
 watch(activeTabUi, () => {
   activeTab.value = activeTabUi.value;
@@ -169,11 +173,11 @@ const applyQueryParams = () => {
   
   // Set search keyword from query
   if (q) {
-    searchKeyword.value = q
+    keyword.value = q
     searchInput.value = q
   } else {
     // Default to F1 if no query
-    searchKeyword.value = 'F1'
+    keyword.value = 'F1'
     searchInput.value = ''
   }
   
@@ -227,9 +231,15 @@ const closeNewspaper = () => {
 }
 
 // Handle unified search
-const handleSearch = () => {
+const handleSearch = async () => {
   if (searchInput.value.trim()) {
-    searchKeyword.value = searchInput.value.trim()
+    keyword.value = searchInput.value.trim()
+
+    await fetchIds();
+    await fet
+    
+
+
     // Stay on current tab, but if on account/debate view, go back to a main tab
     if (activeTab.value === 'account') {
       activeTab.value = 'index'
@@ -307,7 +317,7 @@ const searchBarWidthClass = computed(() => {
 // Watch for route query changes (handles navigation from index.vue)
 watch(() => route.query.q, (newQ: string | (string | null)[] | null | undefined) => {
   if (newQ && typeof newQ === 'string') {
-    searchKeyword.value = newQ
+    keyword.value = newQ
     searchInput.value = newQ
     // Go to overview only on initial navigation (when coming from index page)
     // This happens when first arriving at the result page
