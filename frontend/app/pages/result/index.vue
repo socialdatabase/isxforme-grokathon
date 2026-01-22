@@ -17,7 +17,7 @@
     </transition>
 
     <!-- Hero Section / Toggle -->
-    <header class="hero" :class="{ collapsed: showTabs }" @click="collapseHero">
+    <header class="hero sticky pt-12! top-0 z-99 bg-black" :class="{ collapsed: showTabs }" @click="collapseHero">
       <transition name="fade" mode="out-in">
         <div v-if="!showTabs" key="hero" class="hero-content">
           <h1 class="hero-title">𝕏 is definitely for you!</h1>
@@ -321,7 +321,7 @@ onMounted(() => {
     // Show shooting stars for 2 seconds, then show message
     setTimeout(() => {
       showStars.value = false
-    }, 2000)
+    }, 3000)
     
     // Collapse after 5 seconds total (2s stars + 3s message)
     setTimeout(() => {
@@ -343,7 +343,7 @@ definePageMeta({
   /* width: full; */
   min-height: 100vh;
   background-color: #000;
-  padding: 3rem 1.5rem;
+  padding: 0 1.5rem 3rem 1.5rem;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
