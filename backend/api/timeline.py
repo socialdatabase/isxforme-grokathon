@@ -301,7 +301,6 @@ def fetch_posts(ids: list[str], n_per_account: int = 5, order_by: str = "created
     # Build accounts_dict from users_data (keyed by user id as int)
     accounts_dict = {}
     for user in users_data:
-        print(user)
         accounts_dict[user["id"]] = {
             "id": user["id"],
             "username": user.get("username", ""),
@@ -321,7 +320,6 @@ def fetch_posts(ids: list[str], n_per_account: int = 5, order_by: str = "created
 
 def fetch_posts_timeline(ids: list[str], n_per_account: int = 5, order_by: str = "created_at"):
     posts = fetch_posts(ids, n_per_account, order_by)
-    print(posts)
     if not posts:
         return posts
     

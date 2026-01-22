@@ -145,7 +145,6 @@ class FetchPostsSerializer(serializers.Serializer):
     def save(self, **kwargs):
         ids = self.validated_data.get('ids')
         posts = fetch_posts(ids)
-        print(posts)
         self.instance = {"posts": posts}
         return self.instance
 
