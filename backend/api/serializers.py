@@ -315,3 +315,17 @@ class XaiHandlesSummarySerializer(serializers.Serializer):
         summary = get_xai_handles_summary(ids, input_query)
         self.instance = {"summary": summary}
         return self.instance
+
+
+class AlexiPostsTimelineSerializer(serializers.Serializer):
+    """Serializer for Alexi campaign tracker - fetches more posts per account."""
+    ids = serializers.ListField(child=serializers.CharField(), write_only=True)
+    n_per_account = serializers.IntegerField(write_only=True, required=False, default=15)
+    posts = PostSerializer(many=True, read_only=True)
+
+    def save(self, **kwargs):
+        ids = self.validated_data.get('ids')
+        n_per_account = self.validated_data.get('n_per_account', 15)
+        posts = fetch_posts_timeline(ids, n_per_account=n_per_account)
+        self.instance = {"posts": posts}
+        return self.instance

@@ -849,3 +849,22 @@ Start directly with the script text, no meta-commentary."""
                 {"error": f"Failed to generate podcast script: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    @action(
+        detail=False,
+        methods=["get"],
+        serializer_class=None,  # Set below
+        filter_backends=[QueryFilter],
+        query_filters=["ids"],
+        url_path="alexi-posts-timeline",
+        url_name="alexi-posts-timeline",
+    )
+    def alexi_posts_timeline(self, request):
+        """Fetch posts timeline for Alexi campaign tracker with more posts per account."""
+        from api.serializers import AlexiPostsTimelineSerializer
+        ids = request.GET.getlist("ids")
+        n_per_account = int(request.GET.get("n_per_account", 15))
+        serializer = AlexiPostsTimelineSerializer(data={"ids": ids, "n_per_account": n_per_account})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)

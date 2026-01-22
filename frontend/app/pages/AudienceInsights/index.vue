@@ -6,6 +6,22 @@
     </header>
 
     <div class="audiences-grid">
+      <NuxtLink to="/AudienceInsights/alexi" class="audience-card">
+        <div class="audience-icon chicago-mayor">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M3 21L12 2L21 21H3Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="audience-info">
+          <h3 class="audience-name">Chicago Mayor Race</h3>
+          <p class="audience-desc">Track Alexi Giannoulias vs other candidates</p>
+          <span class="audience-size">Campaign Tracker</span>
+        </div>
+        <svg class="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path d="M9 18L15 12L9 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </NuxtLink>
+
       <NuxtLink to="/AudienceInsights/RustEngineers" class="audience-card">
         <div class="audience-icon">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -95,6 +111,10 @@ definePageMeta({
   border-radius: 12px;
   color: #fff;
   flex-shrink: 0;
+}
+
+.audience-icon.chicago-mayor {
+  background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%);
 }
 
 .audience-info {
