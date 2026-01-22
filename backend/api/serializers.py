@@ -128,6 +128,7 @@ class PostDataSerializer(serializers.Serializer):
 class PostAccountSerializer(serializers.Serializer):
     id = serializers.CharField()
     username = serializers.CharField()
+    name = serializers.CharField()
     verified = serializers.BooleanField(required=False, allow_null=True)
     profile_image_url = serializers.URLField(allow_blank=True, allow_null=True, required=False)
 

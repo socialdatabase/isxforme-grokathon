@@ -240,6 +240,7 @@ def process_post_items(
                 "post": post,
                 "account": {
                     "id": account["id"],
+                    "name": account["name"],
                     "username": account["username"],
                     "verified": account["verified"],
                     "profile_image_url": account["profile_image_url"],
@@ -269,7 +270,7 @@ def fetch_posts(ids: list[str], n_per_account: int = 5, order_by: str = "created
             "tweet.fields": "public_metrics,entities,attachments,created_at,author_id,referenced_tweets",
             "expansions": "attachments.media_keys,author_id",
             "media.fields": "media_key,type,url,preview_image_url,alt_text,variants,width,height",
-            "user.fields": "id,username,verified,profile_image_url",
+            "user.fields": "id,username,name,verified,profile_image_url",
             "exclude": "retweets,replies",  # Exclude retweets and replies by default
             "start_time": one_month_ago,  # Maximum 1 month old
         }
@@ -303,6 +304,7 @@ def fetch_posts(ids: list[str], n_per_account: int = 5, order_by: str = "created
         accounts_dict[user["id"]] = {
             "id": user["id"],
             "username": user.get("username", ""),
+            "name": user.get("name", ""),
             "verified": user.get("verified", False),
             "profile_image_url": user.get("profile_image_url", ""),
         }
@@ -318,7 +320,6 @@ def fetch_posts(ids: list[str], n_per_account: int = 5, order_by: str = "created
 
 def fetch_posts_timeline(ids: list[str], n_per_account: int = 5, order_by: str = "created_at"):
     posts = fetch_posts(ids, n_per_account, order_by)
-    
     if not posts:
         return posts
     

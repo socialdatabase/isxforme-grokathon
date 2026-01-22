@@ -100,6 +100,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue'
+import type { ApiPost } from '~/types/types';
+const { accounts, accountsLoading, ids , posts, keyword} = storeToRefs(useDataStore())
 
 const config = useRuntimeConfig()
 
@@ -118,28 +120,6 @@ interface Article {
   video?: string | null  // New field for video URL
   prompt_text?: string
   videoLoading?: boolean  // New field to track video generation loading state
-}
-
-interface ApiPost {
-  account: {
-    username: string
-    profile_image_url?: string
-    verified?: boolean
-  }
-  post: {
-    id: string
-    text: string
-    created_at: string
-    like_count?: number
-    retweet_count?: number
-    reply_count?: number
-    impression_count?: number
-    media?: Array<{
-      type: string
-      url?: string
-      preview_image_url?: string
-    }>
-  }
 }
 
 const loading = ref(true)
@@ -188,161 +168,121 @@ const handleImageError = (event: Event, index: number) => {
 //   }
 // }
 
-const generateNewspaper = async (keyword: string) => {
+const generateNewspaper = async () => {
   loading.value = true
   articles.value = []
   collectedImages.value = []
+  sourceCount.value = ids.value?.length ?? 0
+  postCount.value = posts.value?.length ?? 0
 
   try {
-    // Step 1: Fetch IDs for the keyword
-    const idsResponse = await $fetch<{ ids: string[] }>(
-      `${config.public.apiBase}/grokathon/fetch-ids/?input_query=${encodeURIComponent(keyword)}`
-    )
 
-    if (!idsResponse.ids || idsResponse.ids.length === 0) {
-      articles.value = [{
-        headline: 'No News Today',
-        author: 'The Grok Times Staff',
-        section: 'Editorial',
-        content: 'Our correspondents found no news on this topic. Please try a different search.',
-        image: null,
-        imageCaption: ''
-      }]
-      loading.value = false
-      return
-    }
-
-    // Take up to 50 IDs for posts
-    const idsToFetch = idsResponse.ids.slice(0, 50)
-    sourceCount.value = idsToFetch.length
-
-    // Step 2: Fetch posts for those accounts
-    const idsParams = idsToFetch.map((id: string) => `ids=${id}`).join('&')
-    const postsResponse = await $fetch<{ posts: ApiPost[] }>(
-      `${config.public.apiBase}/grokathon/fetch-posts/?${idsParams}`
-    )
-
-    if (!postsResponse.posts || postsResponse.posts.length === 0) {
-      articles.value = [{
-        headline: 'Breaking: Silence on the Wire',
-        author: 'The Grok Times Staff',
-        section: 'Editorial',
-        content: 'Our sources have gone quiet. No posts found for this topic.',
-        image: null,
-        imageCaption: ''
-      }]
-      loading.value = false
-      return
-    }
-
-    postCount.value = postsResponse.posts.length
-
-    // Collect images from posts (flat list for fallback)
-    for (const item of postsResponse.posts) {
-      if (item.post?.media && item.post.media.length > 0) {
-        for (const media of item.post.media) {
-          if (media.type !== 'video' && media.type !== 'animated_gif') {
-            const url = media.url || media.preview_image_url
-            if (url && !collectedImages.value.includes(url)) {
-              collectedImages.value.push(url)
-            }
-          }
-        }
-      }
-    }
-
-    // Collect images by username
-    const imagesByUsername: Record<string, string[]> = {}
-    for (const item of postsResponse.posts) {
-      const username = item.account.username
-      if (username) {
-        if (!imagesByUsername[username]) {
-          imagesByUsername[username] = []
-        }
+    if (posts.value && posts.value?.length > 0 ) {
+      // Collect images from posts (flat list for fallback)
+      for (const item of posts.value) {
         if (item.post?.media && item.post.media.length > 0) {
           for (const media of item.post.media) {
             if (media.type !== 'video' && media.type !== 'animated_gif') {
               const url = media.url || media.preview_image_url
-              if (url && !imagesByUsername[username].includes(url)) {
-                imagesByUsername[username].push(url)
-                // Still collect flat for fallback if not already added
-                if (!collectedImages.value.includes(url)) {
-                  collectedImages.value.push(url)
+              if (url && !collectedImages.value.includes(url)) {
+                collectedImages.value.push(url)
+              }
+            }
+          }
+        }
+      }
+
+      // Collect images by username
+      const imagesByUsername: Record<string, string[]> = {}
+      for (const item of posts.value) {
+        const username = item.account.username
+        if (username) {
+          if (!imagesByUsername[username]) {
+            imagesByUsername[username] = []
+          }
+          if (item.post?.media && item.post.media.length > 0) {
+            for (const media of item.post.media) {
+              if (media.type !== 'video' && media.type !== 'animated_gif') {
+                const url = media.url || media.preview_image_url
+                if (url && !imagesByUsername[username].includes(url)) {
+                  imagesByUsername[username].push(url)
+                  // Still collect flat for fallback if not already added
+                  if (!collectedImages.value.includes(url)) {
+                    collectedImages.value.push(url)
+                  }
                 }
               }
             }
           }
         }
       }
-    }
 
-    // Step 3: Prepare posts for Grok (filter out invalid posts)
-    const postsContext = postsResponse.posts
-      .filter((item: ApiPost) => item.post && item.account && item.post.text)
-      .map((item: ApiPost) => ({
-        author: item.account.username || 'Unknown',
-        username: item.account.username || 'unknown',
-        text: item.post.text,
-        likes: item.post.like_count || 0,
-        retweets: item.post.retweet_count || 0
-      }))
+      // Step 3: Prepare posts for Grok (filter out invalid posts)
+      const postsContext = posts.value.filter((item: ApiPost) => item.post && item.account && item.post.text)
+        .map((item: ApiPost) => ({
+          author: item.account.username || 'Unknown',
+          username: item.account.username || 'unknown',
+          text: item.post.text,
+          likes: item.post.like_count || 0,
+          retweets: item.post.retweet_count || 0
+        }))
 
-    // Step 4: Call Grok to generate newspaper articles
-    console.log('Calling generate-newspaper with', postsContext.length, 'posts')
-    
-    try {
-      const grokData = await $fetch<{ articles: Article[] }>(
-        `${config.public.apiBase}/grokathon/generate-newspaper/`,
-        {
-          method: 'POST',
-          body: {
-            keyword: keyword,
-            posts: postsContext
-          }
-        }
-      )
+      // Step 4: Call Grok to generate newspaper articles
+      console.log('Calling generate-newspaper with', postsContext.length, 'posts')
       
-      console.log('Grok response:', grokData)
-      
-      if (grokData.articles && grokData.articles.length > 0) {
-        // Assign collected images to articles, prioritizing source_usernames
-        articles.value = grokData.articles.map((article: Article, index: number) => {
-          let selectedImage: string | null = null
-          
-          // Prioritize image from source_usernames
-          if (article.source_usernames && article.source_usernames.length > 0) {
-            for (const user of article.source_usernames) {
-              const userImages = imagesByUsername[user]
-              if (userImages && userImages.length > 0) {
-                selectedImage = userImages[0] ?? null;  // Or Math.floor(Math.random() * userImages.length) for random
-                break
-              }
+      try {
+        const grokData = await $fetch<{ articles: Article[] }>(
+          `${config.public.apiBase}/grokathon/generate-newspaper/`,
+          {
+            method: 'POST',
+            body: {
+              keyword: keyword.value,
+              posts: postsContext
             }
           }
-          
-          // Fallback to sequential if no match
-          if (!selectedImage) {
-            selectedImage = collectedImages.value[index] || null
-          }
-          
-          return {
-            ...article,
-            image: selectedImage,
-            videoLoading: false,
-            imageCaption: article.imageCaption || `Related to ${keyword}`
-          }
-        })
-        // assignVideos()  // Video generation disabled for now
-      } else {
-        console.log('No articles returned, using fallback')
-        generateFallbackArticles(postsResponse.posts, keyword)
+        )
+        
+        console.log('Grok response:', grokData)
+        
+        if (grokData.articles && grokData.articles.length > 0) {
+          // Assign collected images to articles, prioritizing source_usernames
+          articles.value = grokData.articles.map((article: Article, index: number) => {
+            let selectedImage: string | null = null
+            
+            // Prioritize image from source_usernames
+            if (article.source_usernames && article.source_usernames.length > 0) {
+              for (const user of article.source_usernames) {
+                const userImages = imagesByUsername[user]
+                if (userImages && userImages.length > 0) {
+                  selectedImage = userImages[0] ?? null;  // Or Math.floor(Math.random() * userImages.length) for random
+                  break
+                }
+              }
+            }
+            
+            // Fallback to sequential if no match
+            if (!selectedImage) {
+              selectedImage = collectedImages.value[index] || null
+            }
+            
+            return {
+              ...article,
+              image: selectedImage,
+              videoLoading: false,
+              imageCaption: article.imageCaption || `Related to ${keyword}`
+            }
+          })
+          // assignVideos()  // Video generation disabled for now
+        } else {
+          console.log('No articles returned, using fallback')
+          generateFallbackArticles(posts.value, keyword.value)
+        }
+      } catch (grokErr) {
+        console.error('Grok API error:', grokErr)
+        // Fallback: Generate simple articles from posts
+        generateFallbackArticles(posts.value, keyword.value)
       }
-    } catch (grokErr) {
-      console.error('Grok API error:', grokErr)
-      // Fallback: Generate simple articles from posts
-      generateFallbackArticles(postsResponse.posts, keyword)
     }
-
   } catch (err) {
     console.error('Error generating newspaper:', err)
     // Generate fallback content
@@ -391,20 +331,13 @@ const generateFallbackArticles = (posts: ApiPost[], keyword: string) => {
   })
 }
 
-watch(() => props.keyword, (newKeyword: string) => {
-  if (newKeyword) {
-        console.log('generating keywords')
-
-    generateNewspaper(newKeyword)
+// Watch posts to trigger generation when data is available/updated
+watch(posts, async (newPosts) => {
+  if (newPosts && newPosts.length > 0) {
+    await generateNewspaper()
   }
-}, { immediate: false })
+}, { immediate: true })
 
-onMounted(() => {
-  if (props.keyword) {
-    console.log('generating mounted')
-    generateNewspaper(props.keyword)
-  }
-})
 </script>
 
 <style scoped>

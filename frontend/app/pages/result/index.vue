@@ -17,7 +17,7 @@
     </transition>
 
     <!-- Hero Section / Toggle -->
-    <header class="hero" :class="{ collapsed: showTabs }" @click="collapseHero">
+    <header class="hero sticky pt-12! top-0 z-99 bg-black" :class="{ collapsed: showTabs }" @click="collapseHero">
       <transition name="fade" mode="out-in">
         <div v-if="!showTabs" key="hero" class="hero-content">
           <h1 class="hero-title">𝕏 is definitely for you!</h1>
@@ -69,14 +69,14 @@
 
     <!-- Overview Tab Content (use v-show for preloading) -->
     <div v-show="activeTab === 'overview'" class="tab-content">
-      <ResultOverview :keyword="searchKeyword" @switch-to-timeline="switchToTimeline" />
+      <ResultOverview @switch-to-timeline="switchToTimeline" />
     </div>
 
     <!-- Timeline Tab Content (use v-show for preloading) -->
     <div v-show="activeTab === 'timeline'" class="tab-content">
       <ResultTimeline 
         ref="timelineRef"
-        :keyword="searchKeyword" 
+        :keyword 
         :podcast-mode="podcastMode"
         @open-newspaper="openNewspaper"
         @podcast-state-change="(playing: boolean, loading: boolean) => { podcastMode = playing; podcastLoading = loading }"
@@ -86,7 +86,7 @@
     <!-- Index Tab Content (use v-show for preloading) -->
     <div v-show="activeTab === 'index'" class="tab-content">
       <ResultIndex
-        :keyword="searchKeyword"
+        :keyword
         @select-account="handleAccountSelect"
       />
     </div>
@@ -102,12 +102,12 @@
 
     <!-- GrokSignal Tab Content (use v-show for preloading) -->
     <div v-show="activeTab === 'groksignal'" class="tab-content">
-      <ResultGrokSignal :is-active="activeTab === 'groksignal'" :keyword="searchKeyword" @start-debate="switchToDebate" />
+      <ResultGrokSignal :is-active="activeTab === 'groksignal'" :keyword @start-debate="switchToDebate" />
     </div>
 
     <!-- Expert Debate Tab Content -->
     <div v-if="activeTab === 'debate'" class="tab-content">
-      <ResultExpertDebate :is-active="activeTab === 'debate'" :keyword="searchKeyword" />
+      <ResultExpertDebate :is-active="activeTab === 'debate'" :keyword />
     </div>
 
     <!-- The Grok Times Overlay -->
@@ -118,7 +118,7 @@
         </svg>
       </button>
       <div class="newspaper-content">
-        <TheGrokTimes :keyword="searchKeyword" />
+        <TheGrokTimes :keyword />
       </div>
     </div>
   </div>
@@ -130,10 +130,15 @@ import ResultExpertDebate from '~/components/ResultExpertDebate.vue'
 import ResultGrokSignal from '~/components/ResultGrokSignal.vue'
 import ResultOverview from '~/components/ResultOverview.vue'
 import ResultTimeline from '~/components/ResultTimeline.vue'
+import useData from '~/composables/useData'
+import useDataStore from '~/stores/useDataStore'
+import type { ApiAccount } from '~/types/types'
 
 const config = useRuntimeConfig()
 const route = useRoute()
+const router = useRouter();
 
+const { fetchIds, inferTopic, fetchTimelinePosts, fetchAccounts, fetchSize, fetchPosts } = useData()
 // Account type (must match ExampleIndex)
 interface SelectedAccountData {
   id: string
@@ -150,12 +155,14 @@ const showTabs = ref(false)
 const showStars = ref(true)
 const activeTabUi = ref<'overview' | 'timeline' | 'groksignal' | 'index'>('overview')
 const activeTab = ref<'overview' | 'timeline' | 'groksignal' | 'index' | 'account' | 'debate'>('overview')
-const selectedAccount = ref<SelectedAccountData | null>(null)
-const searchKeyword = ref('') // Start empty, will be set from query
+const selectedAccount = ref<ApiAccount | null>(null)
+// const searchKeyword = ref('') // Start empty, will be set from query
 const searchInput = ref('') // Input field value
 const podcastMode = ref(false)
 const podcastLoading = ref(false)
 const showNewspaper = ref(false)
+
+const { keyword, accounts, timelinePosts, timelinePostsLoading, loading, accountsLoading, postsLoading, posts, communitySize, communitySizeLoading, ids,  } = storeToRefs(useDataStore())
 
 watch(activeTabUi, () => {
   activeTab.value = activeTabUi.value;
@@ -164,17 +171,16 @@ watch(activeTabUi, () => {
 // Apply query params and reset state for fresh search
 const applyQueryParams = () => {
   const tab = route.query.tab as string
-  const user = route.query.user as string
   const q = route.query.q as string
   
   // Set search keyword from query
   if (q) {
-    searchKeyword.value = q
+    keyword.value = q
     searchInput.value = q
   } else {
     // Default to F1 if no query
-    searchKeyword.value = 'F1'
-    searchInput.value = ''
+    keyword.value = 'F1'
+    searchInput.value = 'F1'
   }
   
   // Reset to overview for fresh search unless specific tab requested
@@ -227,9 +233,32 @@ const closeNewspaper = () => {
 }
 
 // Handle unified search
-const handleSearch = () => {
+const handleSearch = async () => {
   if (searchInput.value.trim()) {
-    searchKeyword.value = searchInput.value.trim()
+    keyword.value = searchInput.value.trim()
+
+    router.replace({ path: route.path, query: { q: keyword.value } });
+
+    accounts.value = []
+    posts.value = []
+    timelinePosts.value = []
+    ids.value = []
+    loading.value = true
+    timelinePostsLoading.value = true
+    postsLoading.value = true
+    accountsLoading.value = true
+    communitySize.value = '--'
+    communitySizeLoading.value = true
+
+
+    await inferTopic();
+    await fetchIds();
+    fetchSize();
+    fetchAccounts();
+    fetchPosts();
+    fetchTimelinePosts();
+
+
     // Stay on current tab, but if on account/debate view, go back to a main tab
     if (activeTab.value === 'account') {
       activeTab.value = 'index'
@@ -242,7 +271,7 @@ const handleSearch = () => {
   }
 }
 
-const handleAccountSelect = (account: SelectedAccountData) => {
+const handleAccountSelect = (account: ApiAccount) => {
   selectedAccount.value = account
   activeTab.value = 'account'
   window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -255,36 +284,16 @@ const backToIndex = () => {
 
 const handleChangeHandle = async (newHandle: string) => {
   try {
-    const response = await $fetch<{ account: any }>(
+    const response = await $fetch<{ account: ApiAccount }>(
       `${config.public.apiBase}/grokathon/fetch-account-handle/?handle=${encodeURIComponent(newHandle)}`
     )
     
     if (response.account) {
-      const acc = response.account
-      selectedAccount.value = {
-        id: acc.id,
-        displayName: acc.name || acc.username,
-        username: acc.username,
-        avatar: acc.profile_image_url || '',
-        followers: formatFollowers(acc.public_metrics?.followers_count || 0),
-        following: formatFollowers(acc.public_metrics?.following_count || 0),
-        verified: acc.verified || false,
-        description: acc.description || ''
-      }
+      selectedAccount.value = response.account;
     }
   } catch (err) {
     console.error('Error fetching account by handle:', err)
   }
-}
-
-// Format followers count
-const formatFollowers = (count: number): string => {
-  if (count >= 1000000) {
-    return (count / 1000000).toFixed(1) + 'M'
-  } else if (count >= 1000) {
-    return (count / 1000).toFixed(1) + 'K'
-  }
-  return count.toString()
 }
 
 // Compute search bar width class based on active tab
@@ -307,7 +316,7 @@ const searchBarWidthClass = computed(() => {
 // Watch for route query changes (handles navigation from index.vue)
 watch(() => route.query.q, (newQ: string | (string | null)[] | null | undefined) => {
   if (newQ && typeof newQ === 'string') {
-    searchKeyword.value = newQ
+    keyword.value = newQ
     searchInput.value = newQ
     // Go to overview only on initial navigation (when coming from index page)
     // This happens when first arriving at the result page
@@ -322,11 +331,13 @@ watch(() => route.query.q, (newQ: string | (string | null)[] | null | undefined)
 onMounted(() => {
   applyQueryParams()
   
+  handleSearch();
+
   if (!route.query.tab) {
     // Show shooting stars for 2 seconds, then show message
     setTimeout(() => {
       showStars.value = false
-    }, 2000)
+    }, 3000)
     
     // Collapse after 5 seconds total (2s stars + 3s message)
     setTimeout(() => {
@@ -348,7 +359,7 @@ definePageMeta({
   /* width: full; */
   min-height: 100vh;
   background-color: #000;
-  padding: 3rem 1.5rem;
+  padding: 0 1.5rem 3rem 1.5rem;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 

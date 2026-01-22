@@ -1,7 +1,7 @@
 <template>
   <div class="index-container">
     <!-- Results View -->
-    <div v-if="showResults || loading" class="results-container">
+    <div v-if="!accountsLoading && accounts && accounts?.length > 0" class="results-container">
       <!-- Results Header -->
       <div class="results-header">
         <h2 class="results-title">Authority Index</h2>
@@ -26,21 +26,21 @@
       </div>
 
       <!-- Loading Spinner -->
-      <div v-if="loading" class="loading-container">
+      <div v-if="accountsLoading" class="loading-container">
         <div class="spinner"></div>
         <p class="loading-message">Fetching authority rankings...</p>
       </div>
 
       <!-- Top Community View -->
       <template v-else-if="viewMode === 'community'">
-        <p class="results-subtitle">
-          Top {{ authorityAccounts.length }} authorities<span v-if="currentTopic"> in <span class="topic-highlight">{{ currentTopic }}</span></span>
+        <p class="results-subtitle mb-5!">
+          Top {{ accounts?.length }} authorities
         </p>
         
         <!-- Authority Index Grid -->
         <div class="authority-grid">
           <div 
-            v-for="(account, index) in authorityAccounts" 
+            v-for="(account, index) in accounts" 
             :key="account.username" 
             class="authority-card"
             @click="emit('select-account', account)"
@@ -48,26 +48,22 @@
             <!-- Account Info Row -->
             <div class="account-row">
               <div class="account-avatar">
-                <img :src="account.avatar" :alt="account.displayName" />
+                <img :src="account.profile_image_url" :alt="account.name" />
               </div>
               <div class="account-details">
                 <div class="account-name-row">
-                  <span class="account-name">{{ account.displayName }}</span>
+                  <span class="account-name">{{ account.name }}</span>
                   <svg v-if="account.verified" class="verified-badge" width="16" height="16" viewBox="0 0 24 24" fill="#1d9bf0">
                     <path d="M22.5 12.5c0-1.58-.875-2.95-2.148-3.6.154-.435.238-.905.238-1.4 0-2.21-1.71-3.998-3.818-3.998-.47 0-.92.084-1.336.25C14.818 2.415 13.51 1.5 12 1.5s-2.816.917-3.437 2.25c-.415-.165-.866-.25-1.336-.25-2.11 0-3.818 1.79-3.818 4 0 .494.083.964.237 1.4-1.272.65-2.147 2.018-2.147 3.6 0 1.495.782 2.798 1.942 3.486-.02.17-.032.34-.032.514 0 2.21 1.708 4 3.818 4 .47 0 .92-.086 1.335-.25.62 1.334 1.926 2.25 3.437 2.25 1.512 0 2.818-.916 3.437-2.25.415.163.865.248 1.336.248 2.11 0 3.818-1.79 3.818-4 0-.174-.012-.344-.033-.513 1.158-.687 1.943-1.99 1.943-3.484zm-6.616-3.334l-4.334 6.5c-.145.217-.382.334-.625.334-.143 0-.288-.04-.416-.126l-.115-.094-2.415-2.415c-.293-.293-.293-.768 0-1.06s.768-.294 1.06 0l1.77 1.767 3.825-5.74c.23-.345.696-.436 1.04-.207.346.23.44.696.21 1.04z"/>
                   </svg>
                 </div>
                 <div class="account-handle">@{{ account.username }}</div>
-                <div class="account-followers">{{ account.followers }} followers</div>
+                <div class="account-followers">{{ formatFollowers(account.public_metrics.followers_count) }} followers</div>
               </div>
               
               <!-- Rank Badge -->
               <div class="rank-badge" :class="getRankClass(index)">
                 <span class="rank-number">#{{ Number(index) + 1 }}</span>
-                <template v-if="currentTopic">
-                  <span class="rank-in">in</span>
-                  <span class="rank-topic">{{ currentTopic }}</span>
-                </template>
               </div>
             </div>
           </div>
@@ -95,15 +91,16 @@
 </template>
 
 <script setup lang="ts">
-const config = useRuntimeConfig()
-
 const props = defineProps<{
   keyword: string
 }>()
 
 const emit = defineEmits<{
-  (e: 'select-account', account: AuthorityAccount): void
+  (e: 'select-account', account: ApiAccount): void
 }>()
+
+const { accounts, accountsLoading} = storeToRefs(useDataStore())
+
 
 // Types
 interface AuthorityAccount {
@@ -131,17 +128,7 @@ interface ApiAccount {
   }
 }
 
-const selectedCategory = ref<string | null>(null)
-const showResults = ref(false)
-const currentTopic = ref('F1')
-const loading = ref(false)
 const viewMode = ref<'community' | 'categories'>('community')
-
-// Reactive accounts data
-const authorityAccounts = ref<AuthorityAccount[]>([])
-
-// Fallback F1 Authority accounts (no longer used but kept for reference)
-const fallbackF1Accounts: AuthorityAccount[] = []
 
 // Format follower count
 const formatFollowers = (count: number): string => {
@@ -149,76 +136,6 @@ const formatFollowers = (count: number): string => {
   if (count >= 1000) return (count / 1000).toFixed(1).replace(/\.0$/, '') + 'K'
   return count.toString()
 }
-
-// Fetch accounts from API
-const fetchAccounts = async (keyword: string) => {
-  loading.value = true
-  currentTopic.value = '' // Reset while loading (don't show topic until inferred)
-  authorityAccounts.value = [] // Reset while loading
-  showResults.value = true
-
-  try {
-    // Step 1: Fetch IDs and infer topic in parallel
-    const [idsResponse, topicResponse] = await Promise.all([
-      $fetch<{ ids: string[] }>(
-        `${config.public.apiBase}/grokathon/fetch-ids/?input_query=${encodeURIComponent(keyword)}`
-      ),
-      $fetch<{ topic: string | null }>(
-        `${config.public.apiBase}/grokathon/infer-topic-in-query/?input_query=${encodeURIComponent(keyword)}`
-      ).catch(() => ({ topic: null })) // Fallback if topic inference fails
-    ])
-
-    // Update currentTopic only if the API returns a topic (otherwise leave empty)
-    if (topicResponse.topic) {
-      currentTopic.value = topicResponse.topic
-    }
-
-    if (!idsResponse.ids || idsResponse.ids.length === 0) {
-      return // No results found
-    }
-
-    // Take up to 100 IDs (full index)
-    const idsToFetch = idsResponse.ids.slice(0, 100)
-
-    // Step 2: Fetch account details
-    const idsParams = idsToFetch.map((id: string) => `ids=${id}`).join('&')
-    const accountsResponse = await $fetch<{ accounts: ApiAccount[] }>(
-      `${config.public.apiBase}/grokathon/fetch-accounts/?${idsParams}`
-    )
-
-    if (accountsResponse.accounts && accountsResponse.accounts.length > 0) {
-      // Map API response to authority account format
-      // The order from the API determines the ranking
-      authorityAccounts.value = accountsResponse.accounts.map((acc: ApiAccount) => ({
-        id: acc.id,
-        displayName: acc.name,
-        username: acc.username,
-        avatar: acc.profile_image_url || '',
-        followers: formatFollowers(acc.public_metrics?.followers_count || 0),
-        following: formatFollowers(acc.public_metrics?.following_count || 0),
-        verified: acc.verified || false,
-        description: acc.description || ''
-      }))
-    }
-  } catch (err) {
-    console.error('Error fetching accounts:', err)
-    // Keep empty on error
-  } finally {
-    loading.value = false
-  }
-}
-
-const selectCategory = async (category: string) => {
-  selectedCategory.value = category
-  await fetchAccounts(category)
-}
-
-// Watch for keyword changes from parent
-watch(() => props.keyword, (newKeyword: string) => {
-  if (newKeyword) {
-    fetchAccounts(newKeyword)
-  }
-}, { immediate: true })
 
 const getRankClass = (index: number) => {
   if (index === 0) return 'rank-gold'

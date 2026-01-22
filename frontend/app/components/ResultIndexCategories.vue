@@ -253,7 +253,7 @@ const fetchAuthorityAccounts = async (categoryName: string) => {
 const loadClassifiers = async () => {
   loading.value = true
   try {
-    const response = await fetch('/classifiers.json')
+    const response = await fetch('/classifiersroot.json')
     classifiers.value = await response.json()
     showRootCategories()
   } catch (error) {

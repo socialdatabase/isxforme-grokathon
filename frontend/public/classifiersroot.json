@@ -1,0 +1,200 @@
+{
+    "14173": {
+        "name": "Service",
+        "parent_id": 6027,
+        "group": "category",
+        "level": 1
+    },
+    "6027": {
+        "name": "Root",
+        "parent_id": null,
+        "group": null,
+        "level": 0
+    },
+    "14560": {
+        "name": "Locations",
+        "parent_id": 6027,
+        "group": "location",
+        "level": 1
+    },
+    "4461": {
+        "name": "Automotive",
+        "parent_id": 6027,
+        "group": "interest",
+        "level": 1
+    },
+    "17460": {
+        "name": "Pro Sentiment",
+        "parent_id": 6027,
+        "group": "category",
+        "level": 1
+    },
+    "217": {
+        "name": "Lifestage",
+        "parent_id": 6027,
+        "group": "interest",
+        "level": 1
+    },
+    "4459": {
+        "name": "Home & Garden",
+        "parent_id": 6027,
+        "group": "interest",
+        "level": 1
+    },
+    "4241": {
+        "name": "Recreational Activities",
+        "parent_id": 6027,
+        "group": "interest",
+        "level": 1
+    },
+    "6429": {
+        "name": "Aerospace",
+        "parent_id": 6027,
+        "group": "category",
+        "level": 1
+    },
+    "4642": {
+        "name": "Energy",
+        "parent_id": 6027,
+        "group": "category",
+        "level": 1
+    },
+    "4685": {
+        "name": "Culture",
+        "parent_id": 6027,
+        "group": "category",
+        "level": 1
+    },
+    "63": {
+        "name": "No Path",
+        "parent_id": 6027,
+        "group": null,
+        "level": 1
+    },
+    "4691": {
+        "name": "Environment & Sustainability",
+        "parent_id": 6027,
+        "group": "category",
+        "level": 1
+    },
+    "1049": {
+        "name": "Food/Beverages",
+        "parent_id": 6027,
+        "group": "category",
+        "level": 1
+    },
+    "4473": {
+        "name": "Science",
+        "parent_id": 6027,
+        "group": "category",
+        "level": 1
+    },
+    "231": {
+        "name": "IT/Tech",
+        "parent_id": 6027,
+        "group": "interest",
+        "level": 1
+    },
+    "1868": {
+        "name": "Animals",
+        "parent_id": 6027,
+        "group": "category",
+        "level": 1
+    },
+    "804": {
+        "name": "Media",
+        "parent_id": 6027,
+        "group": "interest",
+        "level": 1
+    },
+    "2073": {
+        "name": "Non Profit",
+        "parent_id": 6027,
+        "group": "category",
+        "level": 1
+    },
+    "2625": {
+        "name": "Business",
+        "parent_id": 6027,
+        "group": "profession",
+        "level": 1
+    },
+    "258": {
+        "name": "Companies",
+        "parent_id": 6027,
+        "group": "company",
+        "level": 1
+    },
+    "176": {
+        "name": "Healthcare",
+        "parent_id": 6027,
+        "group": "profession",
+        "level": 1
+    },
+    "1065": {
+        "name": "Lifestyle",
+        "parent_id": 6027,
+        "group": "interest",
+        "level": 1
+    },
+    "1193": {
+        "name": "Entertainment",
+        "parent_id": 6027,
+        "group": "category",
+        "level": 1
+    },
+    "17869": {
+        "name": "Fossil Hunter",
+        "parent_id": 6027,
+        "group": "interest",
+        "level": 1
+    },
+    "1876": {
+        "name": "Religion",
+        "parent_id": 6027,
+        "group": "interest",
+        "level": 1
+    },
+    "469": {
+        "name": "Sports",
+        "parent_id": 6027,
+        "group": "interest",
+        "level": 1
+    },
+    "17118": {
+        "name": "Retriever Test",
+        "parent_id": 6027,
+        "group": "interest",
+        "level": 1
+    },
+    "799": {
+        "name": "Adult / 18+",
+        "parent_id": 6027,
+        "group": "interest",
+        "level": 1
+    },
+    "705": {
+        "name": "Agriculture",
+        "parent_id": 6027,
+        "group": "category",
+        "level": 1
+    },
+    "431": {
+        "name": "Financial",
+        "parent_id": 6027,
+        "group": "interest",
+        "level": 1
+    },
+    "273": {
+        "name": "Politics",
+        "parent_id": 6027,
+        "group": null,
+        "level": 1
+    },
+    "1218": {
+        "name": "Education",
+        "parent_id": 6027,
+        "group": null,
+        "level": 1
+    }
+}

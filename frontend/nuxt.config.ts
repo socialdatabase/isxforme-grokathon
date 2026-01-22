@@ -24,7 +24,17 @@ export default defineNuxtConfig({
       meta: [
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-        { property: 'og:image', content: '/img/og-image.png' }
+        { property: 'og:title', content: 'Is X for me? - Check if your interests are active on X!' },
+        { property: 'og:description', content: 'Check if your interests are active on X.' },
+        { property: 'og:image', content: '/img/og-image.png' },  
+        { property: 'og:image:width', content: '1200' },
+        { property: 'og:image:height', content: '630' },
+        { property: 'og:image:alt', content: 'Is X for me?' },
+        { property: 'og:image:type', content: 'image/png' },
+        { property: 'og:site_name', content: 'Is X for me?' },
+        { name: 'twitter:image', content: '/img/og-image.png' }, 
+        { name: 'twitter:card', content: 'summary_large_image' }
+
       ]
     }
   },
@@ -33,4 +43,3 @@ export default defineNuxtConfig({
 
   modules: ['@pinia/nuxt', '@nuxt/ui',]
 })
-
