@@ -7,7 +7,7 @@
         <div class="grok-accordion">
           <button class="accordion-header" @click="toggleEntities">
             <span>{{ entitiesCountDisplay }}</span>
-            <div v-if="entityAvatars.length > 0" class="entity-avatars">
+             <div v-if="entityAvatars.length > 0" class="entity-avatars">
               <img v-for="(avatar, index) in entityAvatars" :key="index" :src="avatar" alt="Entity" class="entity-avatar" />
             </div>
             <svg class="accordion-arrow" :class="{ open: entitiesOpen }" width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -308,7 +308,7 @@ const fetchEntities = async () => {
       username: acc.username,
       avatar: acc.profile_image_url || ''
     })) ?? []
-    
+
 
     // Step 3: Fetch expert categories with top 100 IDs
     await fetchExpertCategories(allEntityIds.value)
@@ -720,9 +720,9 @@ watch(() => props.isActive, (active: boolean) => {
 }, { immediate: true })
 
 // Watch for keyword changes - fetch entities even when not active (for pre-loading)
-watch(() => ids.value, async () => {
+watch(() => accounts.value, async () => {
   // Don't fetch if no ids
-  if (!ids.value) {
+  if (!accounts.value?.length) {
     loadingEntities.value = false
     loadingCategories.value = false
     loadingPosts.value = false
