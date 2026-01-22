@@ -136,6 +136,8 @@ import type { ApiAccount } from '~/types/types'
 
 const config = useRuntimeConfig()
 const route = useRoute()
+const router = useRouter();
+
 const { fetchIds, inferTopic, fetchTimelinePosts, fetchAccounts, fetchSize, fetchPosts } = useData()
 // Account type (must match ExampleIndex)
 interface SelectedAccountData {
@@ -160,7 +162,7 @@ const podcastMode = ref(false)
 const podcastLoading = ref(false)
 const showNewspaper = ref(false)
 
-const { keyword } = storeToRefs(useDataStore())
+const { keyword, accounts, timelinePosts, timelinePostsLoading, loading, accountsLoading, postsLoading, posts, communitySize, communitySizeLoading, ids,  } = storeToRefs(useDataStore())
 
 watch(activeTabUi, () => {
   activeTab.value = activeTabUi.value;
@@ -234,6 +236,20 @@ const closeNewspaper = () => {
 const handleSearch = async () => {
   if (searchInput.value.trim()) {
     keyword.value = searchInput.value.trim()
+
+    router.replace({ path: route.path, query: { q: keyword.value } });
+
+    accounts.value = []
+    posts.value = []
+    timelinePosts.value = []
+    ids.value = []
+    loading.value = true
+    timelinePostsLoading.value = true
+    postsLoading.value = true
+    accountsLoading.value = true
+    communitySize.value = '--'
+    communitySizeLoading.value = true
+
 
     await inferTopic();
     await fetchIds();

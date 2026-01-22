@@ -7,6 +7,7 @@ export default () => {
 
   async function fetchIds() {
     try {
+      loading.value = true
       const idsResponse = await $fetch<{ ids: string[] }>(
         `${config.public.apiBase}/grokathon/fetch-ids/?input_query=${encodeURIComponent(keyword.value)}`
       )
@@ -18,6 +19,7 @@ export default () => {
       console.error('Error fetching ids:', err)
       error.value = 'No community found for this topic'
     } finally {
+      loading.value = false
 
     }
   }

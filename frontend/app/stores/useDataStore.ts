@@ -4,7 +4,6 @@ const STORE_KEY = 'useDataStore';
 
 export default defineStore(STORE_KEY, () => {
   const ids = ref<string[]>();
-  
   const loading = ref<boolean>(false);
   const error = ref<string | null>(null)
 
